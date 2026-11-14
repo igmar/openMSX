@@ -84,6 +84,10 @@ public:
 	  */
 	static constexpr int WRAP_LINES = 512;
 	static constexpr int NUM_LINES_MAX = WRAP_LINES;
+	/** The tick within a line at which the VDP decides whether the frame
+	  * ends at the end of that line, see updateFrameEnd().
+	  */
+	static constexpr int FIELD_END_DECISION_TICK = 933;
 
 	explicit VDP(const DeviceConfig& config);
 	~VDP() override;
@@ -1065,6 +1069,7 @@ private:
 	/** Moves the end of this frame (VSYNC) after an R#9 write that
 	  * changes the number of lines, see calcLinesPerFrame(). If the new
 	  * last line is already behind us, the frame runs on to WRAP_LINES.
+	  * Within a line the decision is made at FIELD_END_DECISION_TICK.
 	  * @param time The moment in emulated time this call takes place.
 	  */
 	void updateFrameEnd(EmuTime time);

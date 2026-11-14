@@ -827,14 +827,30 @@ int VDP::calcLinesPerFrame() const
 // rules. E/O does not toggle at that wrap. Measured on a Philips VG-8235
 // (V9958): NT = 0 written at line 277 or 302 of a 50Hz field gives 485 lines
 // from display start to display start.
+//
+// The comparison is made once per line, FIELD_END_DECISION_TICK ticks into
+// the line; its result is used at the line's end. So a write after that point
+// in the last line no longer changes that field's end, and a write that makes
+// the current line the last one, after that point, lets the field run on to
+// the wrap. Measured on a Philips VG-8235 (V9958), IL written in the last
+// line of a field, at 50Hz and at 60Hz: a write that this emulation places
+// at tick 930 of the line still takes effect, one Z80 cycle later (tick 936)
+// it no longer does.
 void VDP::updateFrameEnd(EmuTime time)
 {
-	int lines = calcLinesPerFrame();
-	EmuTime frameEnd = frameStartTime + lines * TICKS_PER_LINE;
-	if (frameEnd <= time) {
-		lines = WRAP_LINES;
-		frameEnd = frameStartTime + lines * TICKS_PER_LINE;
+	auto decisionTime = [&](int lines) {
+		return frameStartTime
+		     + ((lines - 1) * TICKS_PER_LINE + FIELD_END_DECISION_TICK);
+	};
+	if (decisionTime(linesPerFrame) <= time) {
+		// This line is the last one and its end was already decided.
+		return;
 	}
+	int lines = calcLinesPerFrame();
+	if (decisionTime(lines) <= time) {
+		lines = WRAP_LINES;
+	}
+	EmuTime frameEnd = frameStartTime + lines * TICKS_PER_LINE;
 	if (lines == linesPerFrame) return;
 	linesPerFrame = lines;
 	syncVSync.removeSyncPoint();
