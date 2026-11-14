@@ -288,6 +288,10 @@ private:
 	                                 // Register ASX can be read (via status register 8/9)
 	uint8_t COL{0}, ARG{0}, CMD{0};
 
+	/** The colour HMMV writes, taken from COL when it starts.
+	  */
+	uint8_t hmmvCOL{0};
+
 	/** The last executed command (for debugging only).
 	  * A copy of the above registers when the command starts. Remains valid
 	  * until the next command starts (also if the corresponding VDP
@@ -318,7 +322,7 @@ private:
 	 */
 	const bool hasExtendedVRAM;
 };
-SERIALIZE_CLASS_VERSION(VDPCmdEngine, 4);
+SERIALIZE_CLASS_VERSION(VDPCmdEngine, 5);
 
 } // namespace openmsx
 

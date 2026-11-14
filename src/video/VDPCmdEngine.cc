@@ -1361,6 +1361,10 @@ void VDPCmdEngine::startHmmv(EmuTime time)
 	unsigned tmpNY = clipNY_1(DY, NY, ARG);
 	ADX = DX;
 	ANX = tmpNX;
+	// HMMV takes its colour at the start: an R#44 write while it runs
+	// doesn't change the bytes it writes (measured on a V9958, VG-8235;
+	// LMMV and LINE do follow such a write).
+	hmmvCOL = COL;
 	nextAccessSlot(time, VDPAccessSlots::Delta::CMD_START_112);
 	calcFinishTime(tmpNX, tmpNY, 48);
 }
@@ -1383,7 +1387,7 @@ void VDPCmdEngine::executeHmmv(EmuTime limit)
 	while (!calculator.limitReached()) {
 		if (doPset) [[likely]] {
 			vram.cmdWrite(Mode::addressOf(ADX, DY, dstExt),
-			              COL, calculator.getTime());
+			              hmmvCOL, calculator.getTime());
 		}
 		ADX += TX;
 		Delta delta = Delta::CMD_46;
@@ -2832,6 +2836,13 @@ void VDPCmdEngine::serialize(Archive& ar, unsigned version)
 	} else {
 		assert(Archive::IS_LOADER);
 		phase = tmpSrc = tmpDst = 0;
+	}
+
+	if (ar.versionAtLeast(version, 5)) {
+		ar.serialize("hmmvCOL", hmmvCOL);
+	} else {
+		assert(Archive::IS_LOADER);
+		hmmvCOL = COL;
 	}
 
 	if constexpr (Archive::IS_LOADER) {
