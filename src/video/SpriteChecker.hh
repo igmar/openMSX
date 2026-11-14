@@ -198,6 +198,7 @@ public:
 			// Call the right update method for the current display mode.
 			(this->*updateSpritesMethod)(limit);
 		}
+		if (pendingCollisionLine != -1) flagPendingCollision(time);
 	}
 
 	/** Get X coordinate of sprite collision.
@@ -214,12 +215,11 @@ public:
 		return collisionY;
 	}
 
-	/** On a V99x8 the 5th/9th sprite flag and the collision flag go up
-	  * during the line the sprites are checked at, not at the end of that
-	  * line: the 5th/9th sprite flag once the VDP has read the y-coordinate
-	  * of the sprite that doesn't fit, the collision flag when the beam
-	  * reaches the colliding pixel. Checks that for the current line. Call
-	  * after sync(), before S#0 is read.
+	/** On a V99x8 the 5th/9th sprite flag goes up during the line the
+	  * sprites are checked at, not at the end of that line: once the VDP
+	  * has read the y-coordinate of the sprite that doesn't fit. Checks
+	  * that for the current line. (The collision flag goes up in the next
+	  * line, see foundCollision().) Call after sync(), before S#0 is read.
 	  * @param time The moment in emulated time S#0 is read.
 	  */
 	void checkStatusEarly(EmuTime time);
@@ -238,7 +238,7 @@ public:
 	void frameStart(EmuTime time) {
 		frameStartTime.reset(time);
 		currentLine = 0;
-		earlyCollisionLine = -1;
+		pendingCollisionLine = -1;
 		earlySpriteLine = -1;
 		std::ranges::fill(spriteCount, 0);
 		// TODO: Reset anything else? Does the real VDP?
@@ -387,6 +387,15 @@ private:
 	  */
 	[[nodiscard]] std::optional<int> findCollision2(int line) const;
 
+	/** Handles a collision found in check line 'line': on a V99x8 it is
+	  * flagged later, by flagPendingCollision().
+	  */
+	void foundCollision(int line, int minXCollision);
+
+	/** Flags the pending collision once the beam has reached it.
+	  */
+	void flagPendingCollision(EmuTime time);
+
 private:
 	using UpdateSpritesMethod = void (SpriteChecker::*)(int limit);
 	UpdateSpritesMethod updateSpritesMethod;
@@ -419,9 +428,14 @@ private:
 	  */
 	int earlySpriteLine = -1;
 
-	/** Line whose collision checkStatusEarly() already flagged, or -1.
+	/** Check line of a collision that is not flagged yet, or -1.
+	  * @see foundCollision().
 	  */
-	int earlyCollisionLine = -1;
+	int pendingCollisionLine = -1;
+
+	/** X coordinate (in sprite pixels) of that collision.
+	  */
+	int pendingCollisionX = 0;
 
 	/** X coordinate of sprite collision.
 	  * 9 bits long -> [0..511]?
@@ -452,7 +466,7 @@ private:
 	  */
 	bool planar;
 };
-SERIALIZE_CLASS_VERSION(SpriteChecker, 3);
+SERIALIZE_CLASS_VERSION(SpriteChecker, 4);
 
 } // namespace openmsx
 

@@ -201,17 +201,11 @@ inline void SpriteChecker::checkSprites1(int minLine, int maxLine)
 	but there are max 4 sprites and therefore max 6 pairs.
 	If any collision is found, method returns at once.
 	*/
+	// verified: collision coords are also filled in for sprite mode 1
+	if (pendingCollisionLine != -1) return; // not flagged yet
 	for (auto line : xrange(minLine, maxLine)) {
-		// already flagged by checkStatusEarly()
-		if (line == earlyCollisionLine) continue;
 		if (auto minXCollision = findCollision1(line)) {
-			vdp.setSpriteStatus(vdp.getStatusReg0() | 0x20);
-			// verified: collision coords are also filled
-			//           in for sprite mode 1
-			// x-coord should be increased by 12
-			// y-coord                         8
-			collisionX = *minXCollision + 12;
-			collisionY = line - vdp.getLineZero() + 8;
+			foundCollision(line, *minXCollision);
 			return; // don't check lines with higher Y-coord
 		}
 	}
@@ -449,15 +443,10 @@ inline void SpriteChecker::checkSprites2(int minLine, int maxLine)
 	  TODO: Maybe this is slow... Think of something faster.
 	        Probably new approach is needed anyway for OR-ing.
 	*/
+	if (pendingCollisionLine != -1) return; // not flagged yet
 	for (auto line : xrange(minLine, maxLine)) {
-		// already flagged by checkStatusEarly()
-		if (line == earlyCollisionLine) continue;
 		if (auto minXCollision = findCollision2(line)) {
-			vdp.setSpriteStatus(vdp.getStatusReg0() | 0x20);
-			// x-coord should be increased by 12
-			// y-coord                         8
-			collisionX = *minXCollision + 12;
-			collisionY = line - vdp.getLineZero() + 8;
+			foundCollision(line, *minXCollision);
 			return; // don't check lines with higher Y-coord
 		}
 	}
@@ -510,6 +499,41 @@ std::optional<int> SpriteChecker::findCollision2(int line) const
 	return minXCollision;
 }
 
+// A collision found in check line n is flagged while line n + 1, where those
+// sprites are displayed, is drawn: when the beam is about 5 pixels past the
+// colliding pixel. The coordinates are then x + 12 and that display line + 8.
+// Measured on a Philips VG-8235 (V9958) with a bench test ROM: two sprites
+// overlapping at X 128, shown from display line 101, set C 840 - 1008 VDP
+// cycles after FH of line 100 (so in line 101, near dot 125 - 165), and S#5
+// reads 109. (The 5-pixel delay was measured before, on a V9958, with the
+// collision loop of the MSX2+ boot logo.)
+// Not measured on the TMS99xx, so there the collision is still flagged at the
+// end of the check line, with the check line's coordinates.
+void SpriteChecker::foundCollision(int line, int minXCollision)
+{
+	if (vdp.isMSX1VDP()) {
+		vdp.setSpriteStatus(vdp.getStatusReg0() | 0x20);
+		collisionX = minXCollision + 12;
+		collisionY = line - vdp.getLineZero() + 8;
+		return;
+	}
+	pendingCollisionLine = line;
+	pendingCollisionX = minXCollision;
+}
+
+void SpriteChecker::flagPendingCollision(EmuTime time)
+{
+	static constexpr int COLLISION_DELAY = 5; // pixels
+	int displayLine = pendingCollisionLine + 1;
+	int flagTicks = displayLine * VDP::TICKS_PER_LINE + vdp.getLeftSprites()
+	              + 4 * (pendingCollisionX + COLLISION_DELAY);
+	if (frameStartTime.getTicksTill(time) < unsigned(flagTicks)) return;
+	vdp.setSpriteStatus(vdp.getStatusReg0() | 0x20);
+	collisionX = pendingCollisionX + 12;
+	collisionY = displayLine - vdp.getLineZero() + 8;
+	pendingCollisionLine = -1;
+}
+
 void SpriteChecker::checkStatusEarly(EmuTime time)
 {
 	// Not measured on the TMS99xx, so it keeps flagging at the end of the
@@ -525,14 +549,13 @@ void SpriteChecker::checkStatusEarly(EmuTime time)
 	// border is checked (for the first display line)
 	if (!vdp.isDisplayEnabled() && (line != vdp.getLineZero() - 1)) return;
 	uint8_t status = vdp.getStatusReg0();
-	bool wantSprite    = !(status & 0xC0) && (line != earlySpriteLine);
-	bool wantCollision = !(status & 0x20) && (line != earlyCollisionLine);
-	if (!wantSprite && !wantCollision) return;
+	// (The collision flag needs no early check: it goes up in the line
+	// after the check line, see foundCollision().)
+	bool wantSprite = !(status & 0xC0) && (line != earlySpriteLine);
+	if (!wantSprite) return;
 
 	int nthSprite = mode1 ? fillSprites1(line, line + 1).nthSprite
 	                      : fillSprites2(line, line + 1).nthSprite;
-	std::optional<int> minXCollision = mode1 ? findCollision1(line)
-	                                         : findCollision2(line);
 	spriteCount[line] = 0; // updateSprites1/2() fill this line again
 	int cycle = ticks % VDP::TICKS_PER_LINE;
 
@@ -547,23 +570,13 @@ void SpriteChecker::checkStatusEarly(EmuTime time)
 		vdp.setSpriteStatus(uint8_t(0x40 | (vdp.getStatusReg0() & 0x20) | nthSprite));
 		earlySpriteLine = line;
 	}
-
-	// Measured on a V9958 with the sprite-collision loop the MSX2+ boot
-	// logo uses: the collision flag goes up when the beam is about 5 pixels
-	// past the colliding pixel.
-	static constexpr int COLLISION_DELAY = 5; // pixels
-	int x = (cycle - vdp.getLeftSprites()) / 4 - COLLISION_DELAY;
-	if (wantCollision && minXCollision && (*minXCollision <= x)) {
-		vdp.setSpriteStatus(vdp.getStatusReg0() | 0x20);
-		collisionX = *minXCollision + 12;
-		collisionY = line - vdp.getLineZero() + 8;
-		earlyCollisionLine = line;
-	}
 }
 
 // version 1: initial version
 // version 2: bug fix: also serialize 'currentLine'
 // version 3: added 'earlyCollisionLine' and 'earlySpriteLine'
+// version 4: replaced 'earlyCollisionLine' by 'pendingCollisionLine' and
+//            'pendingCollisionX'
 template<typename Archive>
 void SpriteChecker::serialize(Archive& ar, unsigned version)
 {
@@ -589,13 +602,22 @@ void SpriteChecker::serialize(Archive& ar, unsigned version)
 	} else {
 		currentLine = 0;
 	}
-	if (ar.versionAtLeast(version, 3)) {
-		ar.serialize("earlyCollisionLine", earlyCollisionLine,
-		             "earlySpriteLine",    earlySpriteLine);
+	if (ar.versionAtLeast(version, 4)) {
+		ar.serialize("earlySpriteLine",      earlySpriteLine,
+		             "pendingCollisionLine", pendingCollisionLine,
+		             "pendingCollisionX",    pendingCollisionX);
 	} else {
-		// older versions never flagged early
-		earlyCollisionLine = -1;
-		earlySpriteLine = -1;
+		if (ar.versionAtLeast(version, 3)) {
+			int earlyCollisionLine = -1; // no longer used
+			ar.serialize("earlyCollisionLine", earlyCollisionLine,
+			             "earlySpriteLine",    earlySpriteLine);
+		} else {
+			// older versions never flagged early
+			earlySpriteLine = -1;
+		}
+		// older versions flagged a collision at once
+		pendingCollisionLine = -1;
+		pendingCollisionX = 0;
 	}
 }
 INSTANTIATE_SERIALIZE_METHODS(SpriteChecker);
