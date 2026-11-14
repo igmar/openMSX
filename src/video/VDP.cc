@@ -512,7 +512,10 @@ int VDP::getScrollBurstTicks(EmuTime time) const
 	// The new value is used from the first 8-pixel group that starts at
 	// least LEAD ticks after the write (the burst for that group is fetched
 	// ahead of the beam).
-	static constexpr int LEAD = 16;
+	// Measured on a Philips VG-8235 (V9958), GRAPHIC4: R#23 written 162 and
+	// 684 ticks after the display start shows from dot 56 and dot 184,
+	// which needs a lead of 31 to 52 ticks; 40 lies in the middle.
+	static constexpr int LEAD = 40;
 	static constexpr int GROUP = 8 * 4; // 8 pixels of 4 ticks
 	if (!isDisplayEnabled() || !getDisplayMode().isBitmapMode()) return -1;
 	int ticks = getTicksThisFrame(time);
