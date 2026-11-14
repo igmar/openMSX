@@ -41,6 +41,20 @@ void PixelRenderer::draw(
 {
 	if (drawType == DRAW_BORDER) {
 		rasterizer->drawBorder(startX, startY, endX, endY);
+	} else if (drawType == DRAW_BORDER_SPRITES) {
+		// The dots that the horizontal scroll low opens at the left
+		// show the border colour, but sprites are drawn over them.
+		rasterizer->drawBorder(startX, startY, endX, endY);
+		if (vdp.spritesEnabled() && !renderSettings.getDisableSprites()
+		    && !vdp.getDisplayMode().isTextMode()) {
+			int displayX = (startX - vdp.getLeftSprites()) / 2;
+			int displayY = (startY - vdp.getLineZero() + renderScroll) & 255;
+			int displayWidth = (endX - (startX & ~1)) / 2;
+			rasterizer->drawSprites(
+				startX, startY,
+				displayX / 2, displayY,
+				(displayWidth + 1) / 2, endY - startY);
+		}
 	} else {
 		assert(drawType == DRAW_DISPLAY);
 
@@ -632,9 +646,10 @@ void PixelRenderer::renderUntil(EmuTime time)
 
 		// Calculate start and end of borders in ticks since start of line.
 		// The 0..7 extra horizontal scroll low pixels should be drawn in
-		// border color. These will be drawn together with the border,
-		// but sprites above these pixels are clipped at the actual border
-		// rather than the end of the border colored area.
+		// border color, but sprites above these pixels are clipped at the
+		// actual border rather than the end of the border colored area.
+		// Measured on a V9958 (Philips VG-8235): with R#27 = 3 a sprite at
+		// X 0 covers the 3 opened dots.
 		// TODO: Move these calculations and getDisplayLeft() to VDP.
 		int borderL = vdp.getLeftBorder();
 		int displayL =
@@ -645,7 +660,12 @@ void PixelRenderer::renderUntil(EmuTime time)
 		// border and display area). See comment in SDLRasterizer::drawBorder().
 		// Left border.
 		subdivide(nextX, nextY, limitX, limitY,
-			0, displayL, DRAW_BORDER);
+			0, borderL, DRAW_BORDER);
+		if (borderL < displayL) {
+			// The dots opened by horizontal scroll low.
+			subdivide(nextX, nextY, limitX, limitY,
+				borderL, displayL, DRAW_BORDER_SPRITES);
+		}
 		// Display area.
 		subdivide(nextX, nextY, limitX, limitY,
 			displayL, borderR, DRAW_DISPLAY);

@@ -66,7 +66,7 @@ public:
 
 private:
 	/** Indicates whether the area to be drawn is border or display. */
-	enum DrawType : uint8_t { DRAW_BORDER, DRAW_DISPLAY };
+	enum DrawType : uint8_t { DRAW_BORDER, DRAW_BORDER_SPRITES, DRAW_DISPLAY };
 
 	// Observer<Setting> interface:
 	void update(const Setting& setting) noexcept override;
@@ -83,6 +83,7 @@ private:
 	  * Clips the rectangles to { (x,y) | clipL <= x < clipR }.
 	  * @param drawType
 	  *   If DRAW_BORDER, draw rectangles using drawBorder;
+	  *   if DRAW_BORDER_SPRITES, the same with the sprites on top;
 	  *   if DRAW_DISPLAY, draw rectangles using drawDisplay.
 	  */
 	void subdivide(
