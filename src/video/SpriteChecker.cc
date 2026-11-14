@@ -404,7 +404,7 @@ inline SpriteChecker::FillResult SpriteChecker::fillSprites2(int minLine, int ma
 
 inline void SpriteChecker::checkSprites2(int minLine, int maxLine)
 {
-	auto [ninthSpriteNum, sprite] = fillSprites2(minLine, maxLine);
+	int ninthSpriteNum = fillSprites2(minLine, maxLine).nthSprite;
 
 	// Update status register.
 	uint8_t status = vdp.getStatusReg0();
@@ -417,10 +417,11 @@ inline void SpriteChecker::checkSprites2(int minLine, int maxLine)
 			status = uint8_t(0x40 | (status & 0x20) | ninthSpriteNum);
 		}
 	}
-	if (~status & 0x40) {
-		// No 9th sprite detected, store number of latest sprite processed.
-		status = (status & 0x20) | uint8_t(std::min(sprite, 31));
-	}
+	// When no 9th sprite is detected, the sprite number bits keep their
+	// last value: they are not loaded with the latest sprite processed
+	// (measured on a V9958, VG-8235, and a V9938: after a 9th-sprite
+	// event at sprite 12, frames with 3 sprites, or with all 32 sprites
+	// at Y = 217, still read 12). Sprite mode 1 keeps the TMS9918 rule.
 	vdp.setSpriteStatus(status);
 
 	// Optimisation:
