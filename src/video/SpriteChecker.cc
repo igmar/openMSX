@@ -36,6 +36,9 @@ void SpriteChecker::reset(EmuTime time)
 	vdp.setSpriteStatus(0); // TODO 0x00 or 0x1F  (blueMSX has 0x1F)
 	collisionX = 0;
 	collisionY = 0;
+	collisionHeld = false;
+	releaseArmed = false;
+	releaseNextFrame = false;
 
 	frameStart(time);
 
@@ -182,7 +185,7 @@ inline void SpriteChecker::checkSprites1(int minLine, int maxLine)
 	// that state is stable until it is reset by a status reg read,
 	// so no need to execute the checks.
 	// The spriteBuffer array is filled now, so we can bail out.
-	if (vdp.getStatusReg0() & 0x20) return;
+	if ((vdp.getStatusReg0() & 0x20) && !wantCollision()) return;
 
 	/*
 	Model for sprite collision: (or "coincidence" in TMS9918 data sheet)
@@ -422,7 +425,7 @@ inline void SpriteChecker::checkSprites2(int minLine, int maxLine)
 	// that state is stable until it is reset by a status reg read,
 	// so no need to execute the checks.
 	// The visibleSprites array is filled now, so we can bail out.
-	if (vdp.getStatusReg0() & 0x20) return;
+	if ((vdp.getStatusReg0() & 0x20) && !wantCollision()) return;
 
 	/*
 	Model for sprite collision: (or "coincidence" in TMS9918 data sheet)
@@ -529,9 +532,111 @@ void SpriteChecker::flagPendingCollision(EmuTime time)
 	              + 4 * (pendingCollisionX + COLLISION_DELAY);
 	if (frameStartTime.getTicksTill(time) < unsigned(flagTicks)) return;
 	vdp.setSpriteStatus(vdp.getStatusReg0() | 0x20);
-	collisionX = pendingCollisionX + 12;
-	collisionY = displayLine - vdp.getLineZero() + 8;
+	updateHold(flagTicks);
+	if (!collisionHeld) {
+		collisionX = pendingCollisionX + 12;
+		collisionY = displayLine - vdp.getLineZero() + 8;
+		collisionHeld = true;
+	} else {
+		// a collision while a pair is held disarms the release
+		releaseArmed = false;
+	}
 	pendingCollisionLine = -1;
+}
+
+// On a V99x8, S#3 - S#6 hold the coordinates of a collision until a release
+// that an S#5 read arms; without a held collision they show the beam
+// position. Measured on a Philips VG-8235 (V9958), GRAPHIC4, sprite mode 2,
+// with a bench test ROM, seven runs over 10 days:
+// - A collision latches X and Y. An S#0 read does not release them, an S#5
+//   read arms the release (S#0's presence or order makes no difference).
+// - The release happens at a fixed point, not at the read: the held values
+//   show up to line 304 and the beam from line 305 (display lines, 50 Hz;
+//   254 at 60 Hz), here taken as the moment Y changes in that line. A read
+//   after that point arms the release of the next frame.
+// - One new pair is taken per release. A collision while a pair is held
+//   disarms the read.
+// - The S#5 read itself changes nothing that can be read.
+// The V9938 was measured only in part; the TMS99xx has no S#3 - S#6.
+
+// Frame line in which Y is reset (Y reads 0 in this line and the next);
+// the release happens at Y's change in the next line.
+static constexpr int BEAM_Y_RESET_PAL = 50;
+static constexpr int BEAM_Y_RESET_NTSC = 23;
+// Y changes 240 VDP ticks after HR rises, in graphic modes with R#18 = 0
+// (R#18 doesn't move it): that's in the next line.
+static constexpr int BEAM_Y_TICK = (100 + 102 + 56 + 1024 + 240) - VDP::TICKS_PER_LINE;
+
+unsigned SpriteChecker::releaseTicks() const
+{
+	int line = (vdp.isPalTiming() ? BEAM_Y_RESET_PAL : BEAM_Y_RESET_NTSC) + 1;
+	return unsigned(line * VDP::TICKS_PER_LINE + BEAM_Y_TICK);
+}
+
+void SpriteChecker::updateHold(uint64_t ticks)
+{
+	if (!collisionHeld || !releaseArmed || releaseNextFrame) return;
+	if (ticks < releaseTicks()) return;
+	collisionHeld = false;
+	releaseArmed = false;
+}
+
+bool SpriteChecker::wantCollision() const
+{
+	// A new collision takes new coordinates, or disarms a release, even
+	// when the collision flag is already set.
+	return !vdp.isMSX1VDP() && (!collisionHeld || releaseArmed);
+}
+
+void SpriteChecker::resetCollision(EmuTime time)
+{
+	auto ticks = frameStartTime.getTicksTill(time);
+	updateHold(ticks);
+	if (!collisionHeld) return;
+	releaseArmed = true;
+	releaseNextFrame = ticks >= releaseTicks();
+}
+
+bool SpriteChecker::beamStopped() const
+{
+	// with sprites disabled (R#8 SPD) or in a mode without sprites the
+	// beam counters read X 22 and Y 8 (measured, not understood)
+	return !vdp.spritesEnabledRegister() ||
+	       (vdp.getDisplayMode().getSpriteMode(vdp.isMSX1VDP()) == 0);
+}
+
+int SpriteChecker::getBeamX(EmuTime time) const
+{
+	// X = 2 * floor((h - 317) / 8), wrapped at 342, with h the VDP ticks
+	// after HR rises (good to +-2 ticks on 317). Between two counts the
+	// real VDP sometimes reads a neighbouring count or the AND of two.
+	if (beamStopped()) return 22;
+	int ticks = int(frameStartTime.getTicksTill(time) % VDP::TICKS_PER_LINE);
+	int h = (ticks - vdp.getRightBorder() + 2 * VDP::TICKS_PER_LINE)
+	      % VDP::TICKS_PER_LINE;
+	int count = (h - 317 + 8 * VDP::TICKS_PER_LINE) / 8 - VDP::TICKS_PER_LINE;
+	return ((2 * count) % 342 + 342) % 342;
+}
+
+int SpriteChecker::getBeamY(EmuTime time) const
+{
+	// Y counts the lines: it reads 0 in the reset line and the next, then
+	// 1, 2, ... (so display line + 8, with R#18 = 0 and LN = 1), changing
+	// 240 ticks after HR rises.
+	auto ticks = frameStartTime.getTicksTill(time);
+	int line = narrow<int>(ticks / VDP::TICKS_PER_LINE);
+	if (int(ticks % VDP::TICKS_PER_LINE) < BEAM_Y_TICK) --line;
+	int reset = vdp.isPalTiming() ? BEAM_Y_RESET_PAL : BEAM_Y_RESET_NTSC;
+	int y = 0;
+	if (line > reset + 1) {
+		y = line - reset - 1;
+	} else if (line < reset) {
+		y = line + prevFrameLines - reset - 1;
+	}
+	// TODO: the real VDP stops Y where it is when sprites are disabled,
+	// and counts from the reset up to 8; here it reads at most 8.
+	if (beamStopped()) y = std::min(y, 8);
+	return y & 0x1FF;
 }
 
 void SpriteChecker::checkStatusEarly(EmuTime time)
@@ -577,6 +682,8 @@ void SpriteChecker::checkStatusEarly(EmuTime time)
 // version 3: added 'earlyCollisionLine' and 'earlySpriteLine'
 // version 4: replaced 'earlyCollisionLine' by 'pendingCollisionLine' and
 //            'pendingCollisionX'
+// version 5: added 'collisionHeld', 'releaseArmed', 'releaseNextFrame' and
+//            'prevFrameLines'
 template<typename Archive>
 void SpriteChecker::serialize(Archive& ar, unsigned version)
 {
@@ -618,6 +725,18 @@ void SpriteChecker::serialize(Archive& ar, unsigned version)
 		// older versions flagged a collision at once
 		pendingCollisionLine = -1;
 		pendingCollisionX = 0;
+	}
+	if (ar.versionAtLeast(version, 5)) {
+		ar.serialize("collisionHeld",    collisionHeld,
+		             "releaseArmed",     releaseArmed,
+		             "releaseNextFrame", releaseNextFrame,
+		             "prevFrameLines",   prevFrameLines);
+	} else {
+		// older versions held the coordinates until an S#5 read
+		collisionHeld = true;
+		releaseArmed = false;
+		releaseNextFrame = false;
+		prevFrameLines = vdp.isPalTiming() ? 313 : 262;
 	}
 }
 INSTANTIATE_SERIALIZE_METHODS(SpriteChecker);

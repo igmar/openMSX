@@ -205,14 +205,16 @@ public:
 	  */
 	[[nodiscard]] int getCollisionX(EmuTime time) {
 		sync(time);
-		return collisionX;
+		updateHold(frameStartTime.getTicksTill(time));
+		return (collisionHeld || vdp.isMSX1VDP()) ? collisionX : getBeamX(time);
 	}
 
 	/** Get Y coordinate of sprite collision.
 	  */
 	[[nodiscard]] int getCollisionY(EmuTime time) {
 		sync(time);
-		return collisionY;
+		updateHold(frameStartTime.getTicksTill(time));
+		return (collisionHeld || vdp.isMSX1VDP()) ? collisionY : getBeamY(time);
 	}
 
 	/** On a V99x8 the 5th/9th sprite flag goes up during the line the
@@ -224,18 +226,21 @@ public:
 	  */
 	void checkStatusEarly(EmuTime time);
 
-	/** Reset sprite collision coordinates.
-	  * This happens directly after a read, so a timestamp for syncing is
-	  * not necessary.
+	/** Called after a read of S#5.
+	  * On a V99x8 the read doesn't clear the collision coordinates: it
+	  * arms their release, see armRelease() in SpriteChecker.cc.
+	  * @param time The moment in emulated time S#5 is read.
 	  */
-	void resetCollision() {
-		collisionX = collisionY = 0;
-	}
+	void resetCollision(EmuTime time);
 
 	/** Signals the start of a new frame.
 	  * @param time Moment in emulated time the new frame starts.
 	  */
 	void frameStart(EmuTime time) {
+		auto ticks = frameStartTime.getTicksTill(time);
+		updateHold(ticks);
+		prevFrameLines = narrow<int>(ticks / VDP::TICKS_PER_LINE);
+		releaseNextFrame = false;
 		frameStartTime.reset(time);
 		currentLine = 0;
 		pendingCollisionLine = -1;
@@ -390,6 +395,17 @@ private:
 	/** Handles a collision found in check line 'line': on a V99x8 it is
 	  * flagged later, by flagPendingCollision().
 	  */
+	/** Releases the held collision coordinates if an S#5 read armed the
+	  * release and the release point has passed.
+	  * @param ticks VDP ticks since the start of the current frame.
+	  */
+	void updateHold(uint64_t ticks);
+	[[nodiscard]] unsigned releaseTicks() const;
+	[[nodiscard]] bool wantCollision() const;
+	[[nodiscard]] bool beamStopped() const;
+	[[nodiscard]] int getBeamX(EmuTime time) const;
+	[[nodiscard]] int getBeamY(EmuTime time) const;
+
 	void foundCollision(int line, int minXCollision);
 
 	/** Flags the pending collision once the beam has reached it.
@@ -437,6 +453,21 @@ private:
 	  */
 	int pendingCollisionX = 0;
 
+	/** On a V99x8: are collisionX and collisionY held (S#3 - S#6 show
+	  * them), or do S#3 - S#6 show the beam position?
+	  */
+	bool collisionHeld = false;
+
+	/** An S#5 read armed the release of the held coordinates. */
+	bool releaseArmed = false;
+
+	/** The release point of this frame had passed when the read armed
+	  * the release: it happens in the next frame. */
+	bool releaseNextFrame = false;
+
+	/** Number of lines of the previous frame (for the beam's Y). */
+	int prevFrameLines = 313;
+
 	/** X coordinate of sprite collision.
 	  * 9 bits long -> [0..511]?
 	  */
@@ -466,7 +497,7 @@ private:
 	  */
 	bool planar;
 };
-SERIALIZE_CLASS_VERSION(SpriteChecker, 4);
+SERIALIZE_CLASS_VERSION(SpriteChecker, 5);
 
 } // namespace openmsx
 

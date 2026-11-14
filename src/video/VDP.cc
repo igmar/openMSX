@@ -1247,7 +1247,9 @@ uint8_t VDP::peekStatusReg(uint8_t reg, EmuTime time) const
 	case 5:
 		return uint8_t(spriteChecker->getCollisionY(time));
 	case 6:
-		return uint8_t(spriteChecker->getCollisionY(time) >> 8) | 0xFC;
+		// bit 1 reads EO on a V9958 (measured; in every one of 456 reads)
+		return uint8_t((spriteChecker->getCollisionY(time) >> 8) & 1)
+		     | (getEvenOdd() ? 0x02 : 0x00) | 0xFC;
 	case 7:
 		return cmdEngine->readColor(time);
 	case 8:
@@ -1274,7 +1276,7 @@ uint8_t VDP::readStatusReg(uint8_t reg, EmuTime time)
 		}
 		break;
 	case 5:
-		spriteChecker->resetCollision();
+		spriteChecker->resetCollision(time);
 		break;
 	case 7:
 		cmdEngine->resetColor();
