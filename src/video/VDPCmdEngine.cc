@@ -774,7 +774,7 @@ void VDPCmdEngine::executePoint(EmuTime limit)
 	} else {
 		COL = 0xFF;
 	}
-	commandDone(engineTime);
+	commandDone(engineTime, CE_TAIL_DOT);
 }
 
 /** Pset
@@ -809,7 +809,7 @@ void VDPCmdEngine::executePset(EmuTime limit)
 			uint8_t col = COL & Mode::COLOR_MASK;
 			Mode::pset(engineTime, vram, DX, addr, tmpDst, col, LogOp());
 		}
-		commandDone(engineTime);
+		commandDone(engineTime, CE_TAIL_DOT);
 		break;
 	default:
 		UNREACHABLE;
@@ -850,13 +850,13 @@ void VDPCmdEngine::executeSrch(EmuTime limit)
 		}();
 		if ((p == CL) ^ AEQ) {
 			status |= BD; // border detected
-			commandDone(calculator.getTime());
+			commandDone(calculator.getTime(), CE_TAIL_SHORT);
 			break;
 		}
 		ASX += TX;
 		if (ASX & Mode::PIXELS_PER_LINE) {
 			// this does NOT reset the BD flag!
-			commandDone(calculator.getTime());
+			commandDone(calculator.getTime(), CE_TAIL_SHORT);
 			break;
 		}
 		calculator.next(Delta::CMD_88); // TODO
@@ -915,7 +915,7 @@ loop:		if (calculator.limitReached()) [[unlikely]] { phase = 0; break; }
 			//  - (ADX & PPL) test only happens after first pixel
 			//    is drawn. And it does test with 'AND' (not with ==)
 			if (ANX++ == NX || (ADX & Mode::PIXELS_PER_LINE)) {
-				commandDone(calculator.getTime());
+				commandDone(calculator.getTime(), CE_TAIL_SHORT);
 				break;
 			}
 			if (ASX < NY) {
@@ -927,7 +927,7 @@ loop:		if (calculator.limitReached()) [[unlikely]] { phase = 0; break; }
 				// Same for the block commands, but those handle it via
 				// clipNY_1() and clipNY_2().
 				if ((TY < 0) && (int(DY) < 0)) {
-					commandDone(calculator.getTime());
+					commandDone(calculator.getTime(), CE_TAIL_SHORT);
 					break;
 				}
 			}
@@ -938,7 +938,7 @@ loop:		if (calculator.limitReached()) [[unlikely]] { phase = 0; break; }
 			// confirmed on real HW: DY += TY happens before end-test
 			DY += TY;
 			if ((TY < 0) && (int(DY) < 0)) { // see comment above
-				commandDone(calculator.getTime());
+				commandDone(calculator.getTime(), CE_TAIL_SHORT);
 				break;
 			}
 			if (ASX < NY) {
@@ -949,7 +949,7 @@ loop:		if (calculator.limitReached()) [[unlikely]] { phase = 0; break; }
 			ASX -= NY;
 			ASX &= 1023; // mask to 10 bits range
 			if (ANX++ == NX || (ADX & Mode::PIXELS_PER_LINE)) {
-				commandDone(calculator.getTime());
+				commandDone(calculator.getTime(), CE_TAIL_SHORT);
 				break;
 			}
 		}
@@ -1017,7 +1017,7 @@ loop:		if (calculator.limitReached()) [[unlikely]] { phase = 0; break; }
 			DY += TY; --NY;
 			ADX = DX; ANX = tmpNX;
 			if (--tmpNY == 0) {
-				commandDone(calculator.getTime());
+				commandDone(calculator.getTime(), CE_TAIL_BLOCK);
 				break;
 			}
 		}
@@ -1045,7 +1045,7 @@ loop:		if (calculator.limitReached()) [[unlikely]] { phase = 0; break; }
 				DY += TY; --NY;
 				ADX = DX; ANX = tmpNX;
 				if (--tmpNY == 0) {
-					commandDone(engineTime);
+					commandDone(engineTime, CE_TAIL_BLOCK);
 					break;
 				}
 			}
@@ -1075,7 +1075,7 @@ loop:		if (calculator.limitReached()) [[unlikely]] { phase = 0; break; }
 				ADX = DX;
 				ANX = tmpNX;
 				if (--tmpNY == 0) {
-					commandDone(engineTime);
+					commandDone(engineTime, CE_TAIL_BLOCK);
 					break;
 				}
 			} else {
@@ -1152,7 +1152,7 @@ loop:		if (calculator.limitReached()) [[unlikely]] { phase = 0; break; }
 			SY += TY; DY += TY; --NY;
 			ASX = SX; ADX = DX; ANX = tmpNX;
 			if (--tmpNY == 0) {
-				commandDone(calculator.getTime());
+				commandDone(calculator.getTime(), CE_TAIL_BLOCK);
 				break;
 			}
 		}
@@ -1187,7 +1187,7 @@ loop:		if (calculator.limitReached()) [[unlikely]] { phase = 0; break; }
 				SY += TY; DY += TY; --NY;
 				ASX = SX; ADX = DX; ANX = tmpNX;
 				if (--tmpNY == 0) {
-					commandDone(engineTime);
+					commandDone(engineTime, CE_TAIL_BLOCK);
 					break;
 				}
 			}
@@ -1223,7 +1223,7 @@ loop:		if (calculator.limitReached()) [[unlikely]] { phase = 0; break; }
 				ADX = DX;
 				ANX = tmpNX;
 				if (--tmpNY == 0) {
-					commandDone(engineTime);
+					commandDone(engineTime, CE_TAIL_BLOCK);
 					break;
 				}
 			} else {
@@ -1282,7 +1282,7 @@ void VDPCmdEngine::executeLmcm(EmuTime limit)
 		SY += TY; --NY;
 		ASX = SX; ANX = tmpNX;
 		if (--tmpNY == 0) {
-			commandDone(engineTime);
+			commandDone(engineTime, CE_TAIL_BLOCK);
 		}
 	}
 	nextAccessSlot(limit); // TODO
@@ -1342,7 +1342,7 @@ void VDPCmdEngine::executeLmmc(EmuTime limit)
 			DY += TY; --NY;
 			ADX = DX; ANX = tmpNX;
 			if (--tmpNY == 0) {
-				commandDone(limit);
+				commandDone(limit, CE_TAIL_BLOCK);
 			}
 		}
 	}
@@ -1392,7 +1392,7 @@ void VDPCmdEngine::executeHmmv(EmuTime limit)
 			DY += TY; --NY;
 			ADX = DX; ANX = tmpNX;
 			if (--tmpNY == 0) {
-				commandDone(calculator.getTime());
+				commandDone(calculator.getTime(), CE_TAIL_BLOCK);
 				break;
 			}
 		}
@@ -1414,7 +1414,7 @@ void VDPCmdEngine::executeHmmv(EmuTime limit)
 				DY += TY; --NY;
 				ADX = DX; ANX = tmpNX;
 				if (--tmpNY == 0) {
-					commandDone(engineTime);
+					commandDone(engineTime, CE_TAIL_BLOCK);
 					break;
 				}
 			}
@@ -1440,7 +1440,7 @@ void VDPCmdEngine::executeHmmv(EmuTime limit)
 				ADX = DX;
 				ANX = tmpNX;
 				if (--tmpNY == 0) {
-					commandDone(engineTime);
+					commandDone(engineTime, CE_TAIL_BLOCK);
 					break;
 				}
 			} else {
@@ -1511,7 +1511,7 @@ loop:		if (calculator.limitReached()) [[unlikely]] { phase = 0; break; }
 			SY += TY; DY += TY; --NY;
 			ASX = SX; ADX = DX; ANX = tmpNX;
 			if (--tmpNY == 0) {
-				commandDone(calculator.getTime());
+				commandDone(calculator.getTime(), CE_TAIL_BLOCK);
 				break;
 			}
 		}
@@ -1545,7 +1545,7 @@ loop:		if (calculator.limitReached()) [[unlikely]] { phase = 0; break; }
 				SY += TY; DY += TY; --NY;
 				ASX = SX; ADX = DX; ANX = tmpNX;
 				if (--tmpNY == 0) {
-					commandDone(engineTime);
+					commandDone(engineTime, CE_TAIL_BLOCK);
 					break;
 				}
 			}
@@ -1575,7 +1575,7 @@ loop:		if (calculator.limitReached()) [[unlikely]] { phase = 0; break; }
 				ADX = DX;
 				ANX = tmpNX;
 				if (--tmpNY == 0) {
-					commandDone(engineTime);
+					commandDone(engineTime, CE_TAIL_BLOCK);
 					break;
 				}
 			} else {
@@ -1654,7 +1654,7 @@ loop:		if (calculator.limitReached()) [[unlikely]] { phase = 0; break; }
 			SY += TY; DY += TY; --NY;
 			ADX = DX; ANX = tmpNX;
 			if (--tmpNY == 0) {
-				commandDone(calculator.getTime());
+				commandDone(calculator.getTime(), CE_TAIL_BLOCK);
 				break;
 			}
 		}
@@ -1683,7 +1683,7 @@ loop:		if (calculator.limitReached()) [[unlikely]] { phase = 0; break; }
 				SY += TY; DY += TY; --NY;
 				ADX = DX; ANX = tmpNX;
 				if (--tmpNY == 0) {
-					commandDone(engineTime);
+					commandDone(engineTime, CE_TAIL_BLOCK);
 					break;
 				}
 			}
@@ -1712,7 +1712,7 @@ loop:		if (calculator.limitReached()) [[unlikely]] { phase = 0; break; }
 				ADX = DX;
 				ANX = tmpNX;
 				if (--tmpNY == 0) {
-					commandDone(engineTime);
+					commandDone(engineTime, CE_TAIL_BLOCK);
 					break;
 				}
 			} else {
@@ -1771,7 +1771,7 @@ void VDPCmdEngine::executeHmmc(EmuTime limit)
 			DY += TY; --NY;
 			ADX = DX; ANX = tmpNX;
 			if (--tmpNY == 0) {
-				commandDone(limit);
+				commandDone(limit, CE_TAIL_BLOCK);
 			}
 		}
 	}
@@ -2591,14 +2591,21 @@ void VDPCmdEngine::sync2(EmuTime time)
 	}
 }
 
-void VDPCmdEngine::commandDone(EmuTime time)
+void VDPCmdEngine::commandDone(EmuTime time, unsigned ceTail)
 {
 	// Note: TR is not reset yet; it is reset when S#2 is read next.
-	status &= ~CE;
+	// CE stays set for 'ceTail' VDP cycles after the command's last VRAM
+	// access (see CE_TAIL_BLOCK); sync() clears it once that time is reached.
+	ceEndTime = time + VDP::VDPClock::duration(ceTail);
 	executingProbe = false;
 	cmdProbe.signal(); // must be after executingProbe
 	CMD = 0;
-	setStatusChangeTime(EmuTime::infinity());
+	if (ceTail == 0) {
+		status &= ~CE;
+		setStatusChangeTime(EmuTime::infinity());
+	} else {
+		setStatusChangeTime(ceEndTime);
+	}
 	vram.cmdReadWindow.disable(time);
 	vram.cmdWriteWindow.disable(time);
 }
@@ -2791,6 +2798,7 @@ TraceValue VDPCmdEngine::CmdProbe::getTraceValue() const
 //            why this needs to be serialized. Maybe for savestate/replay-files
 //            it's not super useful, but it is important for reverse during a
 //            debug session.
+// version 5: added 'ceEndTime'
 template<typename Archive>
 void VDPCmdEngine::serialize(Archive& ar, unsigned version)
 {
@@ -2840,6 +2848,13 @@ void VDPCmdEngine::serialize(Archive& ar, unsigned version)
 		} else {
 			CMD = 0; // see note above
 		}
+	}
+
+	if (ar.versionAtLeast(version, 5)) {
+		ar.serialize("ceEndTime", ceEndTime);
+	} else {
+		assert(Archive::IS_LOADER);
+		ceEndTime = EmuTime::zero(); // older versions cleared CE at once
 	}
 
 	if (ar.versionAtLeast(version, 4)) {

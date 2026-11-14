@@ -53,6 +53,11 @@ public:
 	  */
 	void sync(EmuTime time) {
 		if (CMD) sync2(time);
+		if (!CMD && (status & CE) && (time >= ceEndTime)) {
+			// the tail after the command's last VRAM access has passed
+			status &= ~CE;
+			statusChangeTime = EmuTime::infinity();
+		}
 	}
 	void sync2(EmuTime time);
 
@@ -239,7 +244,7 @@ private:
 
 	/** Finished executing graphical operation.
 	  */
-	void commandDone(EmuTime time);
+	void commandDone(EmuTime time, unsigned ceTail = 0);
 
 private:
 	/** The VDP this command engine is part of.
@@ -268,6 +273,18 @@ private:
 	  * or EmuTime::infinity -> this command doesn't change the status
 	  */
 	EmuTime statusChangeTime{EmuTime::infinity()};
+
+	/** Time at which CE falls after the last command finished. On the real
+	  * VDP CE stays set for a while after a command's last VRAM access.
+	  * Measured on a V9958 (Philips VG-8235): the block commands (and
+	  * LMCM after its last dot) keep CE about 15 Z80 T-states (90 VDP
+	  * cycles) after their last access, LINE and SRCH about 7 T (42
+	  * cycles), PSET and POINT about 23 T (138 cycles).
+	  */
+	EmuTime ceEndTime{EmuTime::zero()};
+	static constexpr unsigned CE_TAIL_BLOCK = 90;
+	static constexpr unsigned CE_TAIL_SHORT = 42;
+	static constexpr unsigned CE_TAIL_DOT = 138;
 
 	/** Some commands execute multiple VRAM accesses per pixel
 	  * (e.g. LMMM does two reads and a write). This variable keeps
@@ -318,7 +335,7 @@ private:
 	 */
 	const bool hasExtendedVRAM;
 };
-SERIALIZE_CLASS_VERSION(VDPCmdEngine, 4);
+SERIALIZE_CLASS_VERSION(VDPCmdEngine, 5);
 
 } // namespace openmsx
 
