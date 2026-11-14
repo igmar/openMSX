@@ -732,7 +732,11 @@ void VDP::frameStart(EmuTime time)
 	// Toggle E/O.
 	// Actually this should occur half a line earlier,
 	// but for now this is accurate enough.
-	statusReg2 ^= 0x02;
+	// E/O does not toggle when the line counter wraps after running on
+	// past the last line (measured on a V9958, see updateFrameEnd()).
+	if (linesPerFrame != WRAP_LINES) {
+		statusReg2 ^= 0x02;
+	}
 
 	// Settings which are fixed at start of frame.
 	// Not sure this is how real MSX does it, but close enough for now.
@@ -816,15 +820,22 @@ int VDP::calcLinesPerFrame() const
 	}
 }
 
+// The field ends when the line counter equals the last line selected by NT
+// and IL as they are at that moment. If an R#9 write puts that line behind
+// the counter, the counter runs on to its 9-bit wrap: a 512-line field, in
+// which the display line counter, VR and the interrupts follow their usual
+// rules. E/O does not toggle at that wrap. Measured on a Philips VG-8235
+// (V9958): NT = 0 written at line 277 or 302 of a 50Hz field gives 485 lines
+// from display start to display start.
 void VDP::updateFrameEnd(EmuTime time)
 {
 	int lines = calcLinesPerFrame();
-	if (lines == linesPerFrame) return;
 	EmuTime frameEnd = frameStartTime + lines * TICKS_PER_LINE;
 	if (frameEnd <= time) {
-		// The new last line is already behind us, keep the old end.
-		return;
+		lines = WRAP_LINES;
+		frameEnd = frameStartTime + lines * TICKS_PER_LINE;
 	}
+	if (lines == linesPerFrame) return;
 	linesPerFrame = lines;
 	syncVSync.removeSyncPoint();
 	syncVSync.setSyncPoint(frameEnd);

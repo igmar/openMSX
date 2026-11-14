@@ -79,7 +79,11 @@ public:
 	// Number of lines per frame.
 	static constexpr int PAL_LINES = 313;
 	static constexpr int NTSC_LINES = 262;
-	static constexpr int NUM_LINES_MAX = std::max(PAL_LINES, NTSC_LINES);
+	/** The vertical line counter has 9 bits. A field whose last line is
+	  * already behind the counter runs on to its wrap, see updateFrameEnd().
+	  */
+	static constexpr int WRAP_LINES = 512;
+	static constexpr int NUM_LINES_MAX = WRAP_LINES;
 
 	explicit VDP(const DeviceConfig& config);
 	~VDP() override;
@@ -1059,7 +1063,8 @@ private:
 	[[nodiscard]] int calcLinesPerFrame() const;
 
 	/** Moves the end of this frame (VSYNC) after an R#9 write that
-	  * changes the number of lines, see calcLinesPerFrame().
+	  * changes the number of lines, see calcLinesPerFrame(). If the new
+	  * last line is already behind us, the frame runs on to WRAP_LINES.
 	  * @param time The moment in emulated time this call takes place.
 	  */
 	void updateFrameEnd(EmuTime time);
