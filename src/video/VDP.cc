@@ -800,11 +800,16 @@ void VDP::frameStart(EmuTime time)
 // are 313 / 312 lines at 50Hz and 263 / 262 lines at 60Hz; the extra line is
 // in the vertical blanking. An IL write takes effect in the field it is
 // written in.
+// The same holds for NT: the field ends at the length of the 50/60Hz setting
+// as it is at the end of the field, not as it was at the start. (The display
+// start is still fixed at the display line counter reset, see
+// execLineCountReset().)
 int VDP::calcLinesPerFrame() const
 {
+	bool pal = (controlRegs[9] & 0x02) != 0;
 	bool il = (controlRegs[9] & 0x08) != 0;
 	bool longField = !getEvenOdd();
-	if (palTiming) {
+	if (pal) {
 		return (il && !longField) ? PAL_LINES - 1 : PAL_LINES;
 	} else {
 		return (il && longField) ? NTSC_LINES + 1 : NTSC_LINES;
@@ -1572,8 +1577,9 @@ void VDP::changeRegister(uint8_t reg, uint8_t val, EmuTime time)
 			// bit as it is now.
 			scheduleVScan(time);
 		}
-		if (change & 0x08) {
-			// Interlace changes the number of lines of this frame.
+		if (change & 0x0A) {
+			// 50/60Hz and interlace change the number of lines of
+			// this frame.
 			updateFrameEnd(time);
 		}
 		break;

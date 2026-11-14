@@ -418,7 +418,8 @@ public:
 	}
 
 	/** Is PAL timing active?
-	  * This setting is fixed at start of frame.
+	  * This setting is fixed at start of frame. (The length of the frame
+	  * is not, see getLinesPerFrame().)
 	  * @return True if PAL timing, false if NTSC timing.
 	  */
 	[[nodiscard]] bool isPalTiming() const {
