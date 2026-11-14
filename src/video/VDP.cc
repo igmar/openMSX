@@ -872,10 +872,14 @@ void VDP::writeIO(uint16_t port, uint8_t value, EmuTime time_)
 		break;
 	case 3: { // Indirect register write
 		dataLatch = value;
-		// TODO: What happens if reg 17 is written indirectly?
-		//fprintf(stderr, "VDP indirect register write: %02X\n", value);
 		uint8_t regNr = controlRegs[17];
-		changeRegister(regNr & 0x3F, value, time);
+		// R#17 itself cannot be written indirectly: such a write is
+		// ignored, but the pointer still advances (when AII = 0).
+		// Measured on a V9958 (VG-8235): with R#17 pointing at itself
+		// and AII = 1, a stream of indirect writes changes nothing.
+		if ((regNr & 0x3F) != 17) {
+			changeRegister(regNr & 0x3F, value, time);
+		}
 		if ((regNr & 0x80) == 0) {
 			// Auto-increment.
 			controlRegs[17] = (regNr + 1) & 0x3F;
