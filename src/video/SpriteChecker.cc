@@ -16,6 +16,7 @@ TODO:
 #include "serialize.hh"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cassert>
 
@@ -469,19 +470,34 @@ std::optional<int> SpriteChecker::findCollision2(int line) const
 	int magSize = (vdp.isSpriteMag() + 1) * vdp.getSpriteSize();
 	int minXCollision = 999; // no collision
 	std::span<const SpriteInfo, 32 + 1> visibleSprites = spriteBuffer[line];
-	for (int i = std::min<int>(8, spriteCount[line]); --i >= 1; /**/) {
+	int count = std::min<int>(8, spriteCount[line]);
+
+	// A sprite with CC set is OR-ed with the preceding sprites up to and
+	// including the nearest one with CC clear: together they form one
+	// group. Sprites of one group don't collide with each other, but a CC
+	// sprite does collide with sprites of other groups (measured on a
+	// V9958, VG-8235, and on a V9938 for one scene).
+	std::array<int, 8> group;
+	for (auto k : xrange(count)) {
+		bool cc = (visibleSprites[k].colorAttrib & 0x40) != 0;
+		group[k] = (cc && (k > 0)) ? group[k - 1] : k;
+	}
+
+	for (int i = count; --i >= 1; /**/) {
 		auto colorAttrib1 = visibleSprites[i].colorAttrib;
 		if (!can0collide && ((colorAttrib1 & 0xf) == 0)) continue;
-		// If CC or IC is set, this sprite cannot collide.
-		if (colorAttrib1 & 0x60) continue;
+		// If IC is set, this sprite cannot collide.
+		if (colorAttrib1 & 0x20) continue;
 
 		int x_i = visibleSprites[i].x;
 		SpritePattern pattern_i = visibleSprites[i].pattern;
 		for (int j = i; --j >= 0; /**/) {
 			auto colorAttrib2 = visibleSprites[j].colorAttrib;
 			if (!can0collide && ((colorAttrib2 & 0xf) == 0)) continue;
-			// If CC or IC is set, this sprite cannot collide.
-			if (colorAttrib2 & 0x60) continue;
+			// If IC is set, this sprite cannot collide.
+			if (colorAttrib2 & 0x20) continue;
+			// Sprites of one CC group don't collide.
+			if (group[i] == group[j]) continue;
 
 			// Do sprite i and sprite j collide?
 			int x_j = visibleSprites[j].x;
