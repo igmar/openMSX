@@ -184,6 +184,14 @@ public:
 private:
 	void executeCommand(EmuTime time);
 
+	/** Does this R#46 value start a command with a logical operation?
+	  */
+	[[nodiscard]] static bool isLogicalCommand(uint8_t cmd);
+
+	/** The dot mask of the current command mode (0x0F in Graphic 4).
+	  */
+	[[nodiscard]] uint8_t getColorMask() const;
+
 	void setStatusChangeTime(EmuTime t);
 	void calcFinishTime(unsigned NX, unsigned NY, unsigned ticksPerPixel);
 

@@ -1810,6 +1810,32 @@ void VDPCmdEngine::reset(EmuTime time)
 	updateDisplayMode(vdp.getDisplayMode(), vdp.getCmdBit(), time);
 }
 
+bool VDPCmdEngine::isLogicalCommand(uint8_t cmd)
+{
+	switch (cmd >> 4) {
+	case 0x5: // PSET
+	case 0x7: // LINE
+	case 0x8: // LMMV
+	case 0x9: // LMMM
+	case 0xB: // LMMC
+		return true;
+	default:
+		return false;
+	}
+}
+
+uint8_t VDPCmdEngine::getColorMask() const
+{
+	switch (scrMode) {
+	case 0: return Graphic4Mode::COLOR_MASK;
+	case 1: return Graphic5Mode::COLOR_MASK;
+	case 2: return Graphic6Mode::COLOR_MASK;
+	case 3: return Graphic7Mode::COLOR_MASK;
+	case 4: return NonBitmapMode::COLOR_MASK;
+	default: return 0xFF;
+	}
+}
+
 void VDPCmdEngine::setCmdReg(uint8_t index, uint8_t value, EmuTime time)
 {
 	sync(time);
@@ -1859,7 +1885,11 @@ void VDPCmdEngine::setCmdReg(uint8_t index, uint8_t value, EmuTime time)
 		break;
 
 	case 0x0C: // color
-		COL = value;
+		// While a logical (dot) command runs, a written colour is
+		// stored ANDed with the mode's dot mask (measured on a V9958,
+		// VG-8235: GRAPHIC4, 77h written during LMMC or LMMV reads back
+		// as 07h in S#7; during HMMC or HMMV, or with no command, 77h).
+		COL = isLogicalCommand(CMD) ? (value & getColorMask()) : value;
 		// Note: Real VDP always resets TR, but for such a short time
 		//       that the MSX won't notice it.
 		// TODO: What happens on non-transfer commands?
