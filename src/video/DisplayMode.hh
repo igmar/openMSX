@@ -138,8 +138,11 @@ public:
 	  * @return True iff the current display mode has planar VRAM.
 	  */
 	[[nodiscard]] constexpr bool isPlanar() const {
-		// TODO: Is the display mode check OK? Profile undefined modes.
-		return (mode & 0x14) == 0x14;
+		// Only the Graphic 6 and Graphic 7 base modes. Measured on a
+		// V9958 (VG-8235) and a V9938 (VG-8235/20): the undefined modes
+		// M5+M4+M3+M1 and M5+M3+M2 address VRAM linearly.
+		auto base = getBase();
+		return (base == GRAPHIC6) || (base == GRAPHIC7);
 	}
 
 	/** Are sprite pixels narrow?
