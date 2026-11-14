@@ -1304,6 +1304,7 @@ void VDPCmdEngine::startLmmc(EmuTime time)
 	// Baltak Rampage: characters in greetings part are one pixel offset
 	status |= TR;
 	nextAccessSlot(time, VDPAccessSlots::Delta::CMD_START_88);
+	phase = 0;
 }
 
 template<typename Mode, typename LogOp>
@@ -1317,36 +1318,57 @@ void VDPCmdEngine::executeLmmc(EmuTime limit)
 	ANX = clipNX_1_pixel<Mode>(ADX, ANX, ARG);
 	bool dstExt = (ARG & MXD) != 0;
 	bool doPset  = !dstExt || hasExtendedVRAM;
+	unsigned addr = Mode::addressOf(ADX, DY, dstExt);
 
-	if (transfer) {
-		uint8_t col = COL & Mode::COLOR_MASK;
-		// TODO: timing is inaccurate, this executes the read and write
-		//  in the same access slot. Instead we should
-		//    - wait for a byte
-		//    - in next access slot read
-		//    - in next access slot write
-		if (doPset) [[likely]] {
-			unsigned addr = Mode::addressOf(ADX, DY, dstExt);
-			tmpDst = vram.cmdWriteWindow.readNP(addr);
-			Mode::pset(limit, vram, ADX, addr,
-			           tmpDst, col, LogOp());
+	// Each byte is taken from R#44 in the first access slot after it was
+	// written (with that slot the destination is read), and written in a
+	// later slot, with the same spacing as LMMV. A byte written to R#44
+	// before the previous one was taken replaces it: the previous byte is
+	// lost. Measured on a V9958: 128 bytes fed back to back without a TR
+	// poll lose 23-25 dots at 17 T apart (sprites off), none from 22 T.
+	switch (phase) {
+	case 0:
+		if (!transfer) {
+			// wait for a byte; it can be taken from the next slot on
+			if (engineTime < limit) nextAccessSlot(limit);
+			break;
 		}
-		// Execution is emulated as instantaneous, so don't bother
-		// with the timing.
-		// Note: Correct timing would require currentTime to be set
-		//       to the moment transfer becomes true.
+		if (engineTime >= limit) [[unlikely]] break;
+		tmpSrc = COL & Mode::COLOR_MASK;
 		transfer = false;
-
-		ADX += TX; --ANX;
-		if (ANX == 0) {
+		nextAccessSlot(Delta::D1);
+		[[fallthrough]];
+	case 1:
+		if (engineTime >= limit) [[unlikely]] { phase = 1; break; }
+		if (doPset) [[likely]] {
+			tmpDst = vram.cmdWriteWindow.readNP(addr);
+		}
+		nextAccessSlot(Delta::CMD_24);
+		[[fallthrough]];
+	case 2: {
+		if (engineTime >= limit) [[unlikely]] { phase = 2; break; }
+		if (doPset) [[likely]] {
+			Mode::pset(engineTime, vram, ADX, addr,
+			           tmpDst, tmpSrc, LogOp());
+		}
+		phase = 0;
+		ADX += TX;
+		Delta delta = Delta::CMD_72;
+		if (--ANX == 0) {
+			delta = Delta::CMD_72_58;
 			DY += TY; --NY;
 			ADX = DX; ANX = tmpNX;
 			if (--tmpNY == 0) {
-				commandDone(limit);
+				commandDone(engineTime);
+				break;
 			}
 		}
+		nextAccessSlot(delta);
+		break;
 	}
-	nextAccessSlot(limit); // inaccurate, but avoid assert
+	default:
+		UNREACHABLE;
+	}
 }
 
 /** High-speed move VDP -> VRAM.
