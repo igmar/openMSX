@@ -602,10 +602,12 @@ public:
 		return (controlRegs[25] & 0x40) != 0;
 	}
 
-	/** Gets the number of lines per frame.
+	/** Gets the number of lines of this frame.
+	  * With interlace this differs between the even and odd fields, and
+	  * an R#9 write can change it within the frame, see updateFrameEnd().
 	  */
 	[[nodiscard]] int getLinesPerFrame() const {
-		return palTiming ? PAL_LINES : NTSC_LINES;
+		return linesPerFrame;
 	}
 
 	/** Gets the number of display lines per screen.
@@ -1049,6 +1051,18 @@ private:
 	  */
 	void frameStart(EmuTime time);
 
+	/** The number of lines this frame would have with the current
+	  * register values: 313 (50Hz) or 262 (60Hz) lines, and with
+	  * interlace 313 / 312 or 263 / 262, depending on E/O.
+	  */
+	[[nodiscard]] int calcLinesPerFrame() const;
+
+	/** Moves the end of this frame (VSYNC) after an R#9 write that
+	  * changes the number of lines, see calcLinesPerFrame().
+	  * @param time The moment in emulated time this call takes place.
+	  */
+	void updateFrameEnd(EmuTime time);
+
 	/** Schedules the display line counter reset for this frame, at line
 	  * 8 + vertical adjust. Also removes a pending one, if any. The reset
 	  * is where DISPLAY_START, VSCAN and HSCAN get scheduled from, see
@@ -1392,6 +1406,11 @@ private:
 	  */
 	bool interlaced = false;
 
+	/** The number of lines of this frame.
+	  * @see getLinesPerFrame.
+	  */
+	int linesPerFrame = PAL_LINES;
+
 	/** Status register 0.
 	  * Both the F flag (bit 7) and the sprite related bits (bits 6-0)
 	  * are stored here.
@@ -1509,7 +1528,7 @@ private:
 	MSXCPU& cpu;
 	const uint8_t fixedVDPIOdelayCycles;
 };
-SERIALIZE_CLASS_VERSION(VDP, 14);
+SERIALIZE_CLASS_VERSION(VDP, 15);
 
 } // namespace openmsx
 

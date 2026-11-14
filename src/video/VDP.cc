@@ -302,6 +302,7 @@ void VDP::resetInit()
 	//       can be read before frameStart is called.
 	//       TODO: Clean up initialisation sequence.
 	palTiming = true; // controlRegs[9] & 0x02;
+	linesPerFrame = PAL_LINES;
 	displayMode.reset();
 	vramPointer = 0;
 	cpuVramData = 0;
@@ -773,6 +774,7 @@ void VDP::frameStart(EmuTime time)
 
 	// Schedule next VSYNC.
 	frameStartTime.reset(time);
+	linesPerFrame = calcLinesPerFrame();
 	syncVSync.setSyncPoint(frameStartTime + getTicksPerFrame());
 	// Schedule the display line counter reset in the top border, which in
 	// turn schedules DISPLAY_START, VSCAN and HSCAN.
@@ -791,6 +793,36 @@ void VDP::frameStart(EmuTime time)
 		<< ", timing: " << (palTiming ? "PAL"sv : "NTSC"sv)
 		<< "\n";
 	*/
+}
+
+// Measured on a V9958 (Philips VG-8235): with R#9 IL set
+// the field with E/O = 0 is one line longer than the other one, so the fields
+// are 313 / 312 lines at 50Hz and 263 / 262 lines at 60Hz; the extra line is
+// in the vertical blanking. An IL write takes effect in the field it is
+// written in.
+int VDP::calcLinesPerFrame() const
+{
+	bool il = (controlRegs[9] & 0x08) != 0;
+	bool longField = !getEvenOdd();
+	if (palTiming) {
+		return (il && !longField) ? PAL_LINES - 1 : PAL_LINES;
+	} else {
+		return (il && longField) ? NTSC_LINES + 1 : NTSC_LINES;
+	}
+}
+
+void VDP::updateFrameEnd(EmuTime time)
+{
+	int lines = calcLinesPerFrame();
+	if (lines == linesPerFrame) return;
+	EmuTime frameEnd = frameStartTime + lines * TICKS_PER_LINE;
+	if (frameEnd <= time) {
+		// The new last line is already behind us, keep the old end.
+		return;
+	}
+	linesPerFrame = lines;
+	syncVSync.removeSyncPoint();
+	syncVSync.setSyncPoint(frameEnd);
 }
 
 // The I/O functions.
@@ -1540,6 +1572,10 @@ void VDP::changeRegister(uint8_t reg, uint8_t val, EmuTime time)
 			// bit as it is now.
 			scheduleVScan(time);
 		}
+		if (change & 0x08) {
+			// Interlace changes the number of lines of this frame.
+			updateFrameEnd(time);
+		}
 		break;
 	case 18:
 		if (change & 0xF0) {
@@ -2226,6 +2262,7 @@ int VDP::MsxX512PosInfo::calc(EmuTime time) const
 // version 13: added cpuVramReqData, secondCpuVramReqData
 // version 14: added syncLineCountReset and lineCountResetSyncTime; displayStart
 //             is latched there instead of at frame start
+// version 15: added linesPerFrame
 template<typename Archive>
 void VDP::serialize(Archive& ar, unsigned serVersion)
 {
@@ -2347,6 +2384,13 @@ void VDP::serialize(Archive& ar, unsigned serVersion)
 		// what was already pending.
 		lineCountResetSyncTime = frameStartTime.getTime();
 		scheduleLineCountReset(getCurrentTime());
+	}
+
+	if (ar.versionAtLeast(serVersion, 15)) {
+		ar.serialize("linesPerFrame", linesPerFrame);
+	} else if constexpr (Archive::IS_LOADER) {
+		// Older states had no interlaced field lengths.
+		linesPerFrame = palTiming ? PAL_LINES : NTSC_LINES;
 	}
 
 	if (ar.versionAtLeast(serVersion, 11)) {
