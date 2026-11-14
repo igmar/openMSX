@@ -1619,10 +1619,13 @@ void VDPCmdEngine::executeYmmm(EmuTime limit)
 	int TY = (ARG & DIY) ? -1 : 1;
 	ANX = clipNX_1_byte<Mode>(ADX, 512, ARG);
 
-	// TODO does this use MXD for both read and write?
-	//  it says so in the datasheet, but it seems illogical
-	//  OTOH YMMM also uses DX for both read and write
-	bool dstExt = (ARG & MXD) != 0;
+	// The datasheet says YMMM uses MXD for both read and write, but it
+	// reads from the memory selected by MXS, like the other copy
+	// commands (measured on a V9958, VG-8235 without expansion RAM:
+	// MXS = 1 copies garbage, MXS = 0 with MXD = 1 leaves VRAM alone).
+	bool srcExt  = (ARG & MXS) != 0;
+	bool dstExt  = (ARG & MXD) != 0;
+	bool doPoint = !srcExt || hasExtendedVRAM;
 	bool doPset  = !dstExt || hasExtendedVRAM;
 	auto calculator = getSlotCalculator(limit);
 
@@ -1635,9 +1638,11 @@ void VDPCmdEngine::executeYmmm(EmuTime limit)
 	switch (phase) {
 	case 0:
 loop:		if (calculator.limitReached()) [[unlikely]] { phase = 0; break; }
-		if (doPset) [[likely]] {
+		if (doPoint) [[likely]] {
 			tmpSrc = vram.cmdReadWindow.readNP(
-			       Mode::addressOf(ADX, SY, dstExt));
+			       Mode::addressOf(ADX, SY, srcExt));
+		} else {
+			tmpSrc = 0xFF;
 		}
 		calculator.next(Delta::CMD_24);
 		[[fallthrough]];
