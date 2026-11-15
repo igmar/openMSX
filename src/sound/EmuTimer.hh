@@ -24,7 +24,7 @@ class EmuTimer final : public Schedulable
 public:
 	EmuTimer(Scheduler& scheduler, EmuTimerCallback& cb,
 	         uint8_t flag, unsigned freq_num, unsigned freq_denom,
-	         int maxVal);
+	         int maxVal, bool freeRunning = false);
 
 	[[nodiscard]] static std::unique_ptr<EmuTimer> createOPM_1(
 		Scheduler& scheduler, EmuTimerCallback& cb);
@@ -35,6 +35,10 @@ public:
 	[[nodiscard]] static std::unique_ptr<EmuTimer> createOPL3_1(
 		Scheduler& scheduler, EmuTimerCallback& cb);
 	[[nodiscard]] static std::unique_ptr<EmuTimer> createOPL3_2(
+		Scheduler& scheduler, EmuTimerCallback& cb);
+	[[nodiscard]] static std::unique_ptr<EmuTimer> createY8950_1(
+		Scheduler& scheduler, EmuTimerCallback& cb);
+	[[nodiscard]] static std::unique_ptr<EmuTimer> createY8950_2(
 		Scheduler& scheduler, EmuTimerCallback& cb);
 	[[nodiscard]] static std::unique_ptr<EmuTimer> createOPL4_1(
 		Scheduler& scheduler, EmuTimerCallback& cb);
@@ -55,9 +59,12 @@ private:
 private:
 	EmuTimerCallback& cb;
 	DynamicClock clock{EmuTime::zero()};
+	// The free-running prescaler's ticks (only used when freeRunning)
+	DynamicClock prescaler{EmuTime::zero()};
 	const int maxVal;
 	int count;
 	const uint8_t flag;
+	const bool freeRunning;
 	bool counting = false;
 };
 

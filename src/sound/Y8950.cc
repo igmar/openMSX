@@ -493,8 +493,8 @@ Y8950::Y8950(const std::string& name_, const DeviceConfig& config,
 	, connector(motherBoard.getPluggingController())
 	, dac13(name_ + " DAC", "MSX-AUDIO 13-bit DAC", config)
 	, debuggable(motherBoard, getName())
-	, timer1(EmuTimer::createOPL3_1(motherBoard.getScheduler(), *this))
-	, timer2(EmuTimer::createOPL3_2(motherBoard.getScheduler(), *this))
+	, timer1(EmuTimer::createY8950_1(motherBoard.getScheduler(), *this))
+	, timer2(EmuTimer::createY8950_2(motherBoard.getScheduler(), *this))
 	, irq(motherBoard, getName() + ".IRQ")
 {
 	// For debugging: print out tables to be able to compare before/after
