@@ -351,11 +351,16 @@ void Y8950Adpcm::resetStatus()
 	// routine in 'MSX-Audio BIOS v1.3' depends on this. See
 	//   [3533002] Y8950 not being detected by MSX-Audio v1.3
 	//   https://sourceforge.net/tracker/?func=detail&aid=3533002&group_id=38274&atid=421861
-	// TODO I've implemented this as '(reg7 & R07_MODE) == 0', is this
-	//      correct/complete?
+	//
+	// Measured on a real NMS 1205: in playback via the CPU (register 0Fh)
+	// the bit is set too, whether or not a byte is still waiting in 0Fh.
+	// In playback from sample ram it is not set. Recording is not
+	// measured and is left as it was.
 	if (((reg7 & R07_MODE & ~R07_REC) == R07_MEMORY_DATA) ||
+	    ((reg7 & R07_MODE) == R07_START) ||
 	    ((reg7 & R07_MODE) == 0)){
-		// transfer to or from sample ram, or no function
+		// transfer to or from sample ram, playback via the CPU, or no
+		// function
 		y8950.setStatus(Y8950::STATUS_BUF_RDY);
 	}
 }
