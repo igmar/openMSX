@@ -1175,6 +1175,9 @@ uint8_t Y8950::peekReg(uint8_t rg, EmuTime time) const
 			uint8_t input = periphery.read(time);
 			uint8_t output = reg[0x19];
 			uint8_t enable = reg[0x18];
+			// Bits 7-4 are not driven by the Y8950: on a real
+			// NMS 1205 they read the last byte on the bus (the IN
+			// instruction's operand). 1s is the usual undriven value.
 			return (output & enable) | (input & ~enable) | 0xF0;
 		}
 		default:
@@ -1190,7 +1193,10 @@ uint8_t Y8950::readStatus(EmuTime time) const
 uint8_t Y8950::peekStatus(EmuTime time) const
 {
 	const_cast<Y8950Adpcm&>(adpcm).sync(time);
-	return (status & (0x87 | statusMask)) | 0x06; // bit 1 and 2 are always 1
+	// Bits 2 and 1 are not driven by the Y8950, they are not "always 1": on
+	// a real NMS 1205 they follow the last byte on the bus (00 after
+	// 'IN A,(C0h)', 01 within an INIR). 1s is the usual undriven value.
+	return (status & (0x87 | statusMask)) | 0x06;
 }
 
 void Y8950::callback(uint8_t flag)
