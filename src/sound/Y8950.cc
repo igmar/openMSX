@@ -822,6 +822,19 @@ void Y8950::generateChannels(std::span<float*> bufs, unsigned num)
 		return;
 	}
 
+	if (reg[0x08] & 0x0C) {
+		// In the AD/DA conversion mode (register 08h bit 2, DA/AD, or
+		// bit 3, SAMPLE) the FM part is silent. Measured on a real
+		// NMS 1205: with either bit set an FM tone drops to the noise
+		// floor. As for the mute above, the FM state is not updated
+		// meanwhile.
+		std::fill(bufs.begin(), bufs.begin() + 14, nullptr);
+		for (auto sample : xrange(num)) {
+			bufs[14][sample] += narrow_cast<float>(adpcm.calcSample());
+		}
+		return;
+	}
+
 	for (auto sample : xrange(num)) {
 		// Amplitude modulation: 27 output levels (triangle waveform);
 		// 1 level takes one of: 192, 256 or 448 samples
