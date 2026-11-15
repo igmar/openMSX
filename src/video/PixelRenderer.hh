@@ -155,6 +155,14 @@ private:
 	int pendingScrollTicks = -1; // -1: nothing pending
 	void applyPendingScroll(EmuTime time);
 
+	/** Horizontal scroll (R#26) as given to the rasterizer: a write
+	  * reaches the picture some dots after it, see
+	  * updateHorizontalScrollHigh().
+	  */
+	uint8_t pendingScrollHigh = 0;
+	int pendingScrollHighTicks = -1; // -1: nothing pending
+	void applyPendingScrollHigh(EmuTime time);
+
 	/** Accuracy setting for current frame.
 	  */
 	RenderSettings::Accuracy accuracy;

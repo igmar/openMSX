@@ -184,6 +184,8 @@ void PixelRenderer::frameStart(EmuTime time)
 	// taken effect by now; also resyncs after e.g. loading a savestate.
 	renderScroll = vdp.getVerticalScroll();
 	pendingScrollTicks = -1;
+	rasterizer->setHorizontalScrollHigh(vdp.getHorizontalScrollHigh());
+	pendingScrollHighTicks = -1;
 
 	if (!rasterizer->isActive()) {
 		frameSkipCounter = 999.0f;
@@ -279,9 +281,34 @@ void PixelRenderer::updateHorizontalScrollLow(
 }
 
 void PixelRenderer::updateHorizontalScrollHigh(
-	uint8_t /*scroll*/, EmuTime time)
+	uint8_t scroll, EmuTime time)
 {
-	if (displayEnabled) sync(time);
+	// Measured on a Philips VG-8235 (V9958), GRAPHIC7: R#26 written in a
+	// display line at dots 40.5, 100.5, 171 and 231 shows the new scroll
+	// from dots 52, 104-112, 184 and 240, so 9 to 13 dots after the write.
+	// The chip's rule inside an 8-dot block is not known; this uses one
+	// lead of 11 dots (44 ticks), the middle of that range.
+	static constexpr int LEAD = 44;
+	if (displayEnabled) sync(time); // draws up to 'time' with the old value
+	if (!displayEnabled) {
+		pendingScrollHighTicks = -1;
+		rasterizer->setHorizontalScrollHigh(scroll);
+		return;
+	}
+	// A second write inside the lead replaces the first one.
+	pendingScrollHigh = scroll;
+	pendingScrollHighTicks = vdp.getTicksThisFrame(time) + LEAD;
+}
+
+void PixelRenderer::applyPendingScrollHigh(EmuTime time)
+{
+	if (pendingScrollHighTicks < 0) return;
+	if (pendingScrollHighTicks >= vdp.getTicksPerFrame()) return; // frameStart
+	if (vdp.getTicksThisFrame(time) < pendingScrollHighTicks) return;
+	int ticks = pendingScrollHighTicks;
+	pendingScrollHighTicks = -1;
+	renderUntil(vdp.getTimeInFrame(ticks)); // old value up to that dot
+	rasterizer->setHorizontalScrollHigh(pendingScrollHigh);
 }
 
 void PixelRenderer::updateBorderMask(
@@ -594,6 +621,7 @@ void PixelRenderer::sync(EmuTime time, bool force)
 void PixelRenderer::renderUntil(EmuTime time)
 {
 	applyPendingScroll(time);
+	applyPendingScrollHigh(time);
 
 	// Translate from time to pixel position.
 	int limitTicks = vdp.getTicksThisFrame(time);

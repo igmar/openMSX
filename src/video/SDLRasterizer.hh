@@ -52,6 +52,7 @@ public:
 	void setBackgroundColor(uint8_t index) override;
 	void setHorizontalAdjust(int adjust) override;
 	void setHorizontalScrollLow(uint8_t scroll) override;
+	void setHorizontalScrollHigh(uint8_t scroll) override;
 	void setBorderMask(bool masked) override;
 	void setTransparency(bool enabled) override;
 	void setSuperimposeVideoFrame(const RawFrame* videoSource) override;
@@ -124,6 +125,10 @@ private:
 	/** VRAM to pixels converter for character display modes.
 	  */
 	CharacterConverter characterConverter;
+
+	/** R#26 as used for drawing.
+	  */
+	uint8_t hScrollHigh = 0;
 
 	/** VRAM to pixels converter for bitmap display modes.
 	  */

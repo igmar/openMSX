@@ -155,6 +155,7 @@ void SDLRasterizer::reset()
 {
 	// Init renderer state.
 	setDisplayMode(vdp.getDisplayMode());
+	setHorizontalScrollHigh(vdp.getHorizontalScrollHigh());
 	spriteConverter.setTransparency(vdp.getTransparency());
 
 	resetPalette();
@@ -239,6 +240,12 @@ void SDLRasterizer::setHorizontalAdjust(int /*adjust*/)
 
 void SDLRasterizer::setHorizontalScrollLow(uint8_t /*scroll*/)
 {
+}
+
+void SDLRasterizer::setHorizontalScrollHigh(uint8_t scroll)
+{
+	hScrollHigh = scroll;
+	characterConverter.setHorizontalScrollHigh(scroll);
 }
 
 void SDLRasterizer::setBorderMask(bool /*masked*/)
@@ -498,7 +505,7 @@ void SDLRasterizer::drawDisplay(
 	unsigned hScroll =
 		  mode.isTextMode()
 		? 0
-		: 8 * (lineWidth / 256) * (vdp.getHorizontalScrollHigh() & 0x1F);
+		: 8 * (lineWidth / 256) * (hScrollHigh & 0x1F);
 
 	// Page border is display X coordinate where to stop drawing current page.
 	// This is either the multi page split point, or the right edge of the
@@ -508,7 +515,7 @@ void SDLRasterizer::drawDisplay(
 	int pageBorder = displayX + displayWidth;
 	auto [scrollPage1, scrollPage2] = [&] -> std::pair<int, int> {
 		if (vdp.isMultiPageScrolling()) {
-			int p1 = vdp.getHorizontalScrollHigh() >> 5;
+			int p1 = hScrollHigh >> 5;
 			int p2 = p1 ^ 1;
 			return {p1, p2};
 		} else {

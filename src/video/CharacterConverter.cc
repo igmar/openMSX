@@ -258,7 +258,7 @@ void CharacterConverter::renderGraphic1(std::span<Pixel, 256> buf, int line) con
 	auto l = line & 7;
 	auto colorArea = vram.colorTable.getReadArea<256 / 8>(0);
 
-	int scroll = vdp.getHorizontalScrollHigh();
+	int scroll = scrollHigh;
 	auto namePtr = getNamePtr(line, scroll);
 	Pixel* __restrict pixelPtr = buf.data();
 	repeat(32, [&] {
@@ -276,7 +276,7 @@ void CharacterConverter::renderGraphic2(std::span<Pixel, 256> buf, int line) con
 {
 	int quarter8 = (((line / 8) * 32) & ~0xFF) * 8;
 	int line7 = line & 7;
-	int scroll = vdp.getHorizontalScrollHigh();
+	int scroll = scrollHigh;
 	auto namePtr = getNamePtr(line, scroll);
 
 	Pixel* __restrict pixelPtr = buf.data();
@@ -320,7 +320,7 @@ void CharacterConverter::renderMultiHelper(
 	unsigned mask, unsigned patternQuarter) const
 {
 	unsigned baseLine = mask | ((line / 4) & 7);
-	unsigned scroll = vdp.getHorizontalScrollHigh();
+	unsigned scroll = scrollHigh;
 	auto namePtr = getNamePtr(line, scroll);
 	repeat(32, [&] {
 		unsigned patternNr = patternQuarter | namePtr[scroll & 0x1F];

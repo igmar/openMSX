@@ -46,6 +46,10 @@ public:
 	  */
 	void setDisplayMode(DisplayMode mode);
 
+	/** The R#26 value to draw with.
+	  */
+	void setHorizontalScrollHigh(uint8_t scroll) { scrollHigh = scroll; }
+
 private:
 	inline void renderText1   (std::span<Pixel, 256> buf, int line) const;
 	inline void renderText1Q  (std::span<Pixel, 256> buf, int line) const;
@@ -68,6 +72,7 @@ private:
 	std::span<const Pixel, 16> palFg;
 	std::span<const Pixel, 16> palBg;
 
+	uint8_t scrollHigh = 0;
 	unsigned modeBase = 0; // not strictly needed, but avoids Coverity warning
 };
 

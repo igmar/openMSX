@@ -63,6 +63,9 @@ public:
 
 	virtual void setHorizontalAdjust(int adjust) = 0;
 	virtual void setHorizontalScrollLow(uint8_t scroll) = 0;
+	/** The R#26 value to draw with (it can lag the register, see
+	  * PixelRenderer::updateHorizontalScrollHigh). */
+	virtual void setHorizontalScrollHigh(uint8_t scroll) = 0;
 	virtual void setBorderMask(bool masked) = 0;
 	virtual void setTransparency(bool enabled) = 0;
 	virtual void setSuperimposeVideoFrame(const RawFrame* videoSource) = 0;
