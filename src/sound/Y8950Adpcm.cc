@@ -157,7 +157,8 @@ void Y8950Adpcm::writeReg(uint8_t rg, uint8_t data, EmuTime time)
 {
 	sync(time); // TODO only when needed
 	switch (rg) {
-	case 0x07: // START/REC/MEM DATA/REPEAT/SP-OFF/-/-/RESET
+	case 0x07: { // START/REC/MEM DATA/REPEAT/SP-OFF/-/-/RESET
+		bool wasPlayingMemory = isPlaying() && (reg7 & R07_MEMORY_DATA);
 		reg7 = data;
 		if (reg7 & R07_START) {
 			y8950.setStatus(Y8950::STATUS_PCM_BSY);
@@ -166,6 +167,12 @@ void Y8950Adpcm::writeReg(uint8_t rg, uint8_t data, EmuTime time)
 		}
 		if (reg7 & R07_RESET) {
 			reg7 = 0;
+		}
+		if (wasPlayingMemory && !(reg7 & R07_START)) {
+			// Measured on a real NMS 1205: a write that stops a
+			// playback from sample ram (START cleared or RESET, with
+			// or without REPEAT) sets EOS at once.
+			y8950.setStatus(Y8950::STATUS_EOS);
 		}
 		if (reg7 & R07_START) {
 			// start ADPCM
@@ -191,7 +198,7 @@ void Y8950Adpcm::writeReg(uint8_t rg, uint8_t data, EmuTime time)
 			schedule();
 		}
 		break;
-
+	}
 	case 0x08: // CSM/KEY BOARD SPLIT/-/-/SAMPLE/DA AD/64K/ROM
 		romBank = data & R08_ROM;
 		addrMask = data & R08_64K ? (1 << 16) - 1 : (1 << 18) - 1;
