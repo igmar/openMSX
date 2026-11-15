@@ -314,6 +314,7 @@ void VDP::resetInit()
 	paletteDataStored = false;
 	blinkState = false;
 	blinkCount = 0;
+	blinkRefLine = 0;
 	horizontalAdjust = 7;
 	// Placeholders until the first display line counter reset latches the
 	// real values, see execLineCountReset().
@@ -417,6 +418,7 @@ void VDP::execVSync(EmuTime time)
 		auto next = calculateLineBlinkState(getLinesPerFrame());
 		blinkState = next.state;
 		blinkCount = next.count;
+		blinkRefLine = 0;
 	}
 
 	// Finish the previous frame, because access-slot calculations work within a frame.
@@ -1341,6 +1343,19 @@ void VDP::changeRegister(uint8_t reg, uint8_t val, EmuTime time)
 	// Register 13 is special because writing it resets blinking state,
 	// even if the value in the register doesn't change.
 	if (reg == 13) {
+		if (isFastBlinkEnabled()) {
+			// With fast blink the write restarts the count at the
+			// line it is written in, mid-line, and the count keeps
+			// stepping per line through the frame's end.
+			// Measured on a Philips VG-8235 (V9958), PAL, GRAPHIC7,
+			// R#13 = 11h: written every frame in line 100 near dot
+			// 171, the ON page shows from about dot 183 of line 100
+			// to line 109, then 10 lines each, also across the frame
+			// start; written also at line 213, 10-line bands from
+			// line 0.
+			renderer->updateBlinkState(blinkState, time); // sync
+			blinkRefLine = getTicksThisFrame(time) / TICKS_PER_LINE;
+		}
 		// Switch to ON state unless ON period is zero.
 		if (blinkState == ((val & 0xF0) == 0)) {
 			renderer->updateBlinkState(!blinkState, time);
@@ -1354,10 +1369,7 @@ void VDP::changeRegister(uint8_t reg, uint8_t val, EmuTime time)
 			// Stable color.
 			blinkCount = 0;
 		}
-		// TODO when 'isFastBlinkEnabled()==true' the variables
-		// 'blinkState' and 'blinkCount' represent the values at line 0.
-		// This implementation is not correct for the partial remaining
-		// frame after register 13 got changed.
+		// With fast blink the variables hold for line 'blinkRefLine'.
 	}
 
 	if (!change) return;
@@ -2226,6 +2238,7 @@ int VDP::MsxX512PosInfo::calc(EmuTime time) const
 // version 13: added cpuVramReqData, secondCpuVramReqData
 // version 14: added syncLineCountReset and lineCountResetSyncTime; displayStart
 //             is latched there instead of at frame start
+// version 15: added blinkRefLine
 template<typename Archive>
 void VDP::serialize(Archive& ar, unsigned serVersion)
 {
@@ -2361,6 +2374,12 @@ void VDP::serialize(Archive& ar, unsigned serVersion)
 		previousCpuSlotIsLate = false;
 		secondCpuSlot = EmuTime::infinity();
 	}
+	if (ar.versionAtLeast(serVersion, 15)) {
+		ar.serialize("blinkRefLine", blinkRefLine);
+	} else {
+		blinkRefLine = 0;
+	}
+
 	if (ar.versionAtLeast(serVersion, 13)) {
 		ar.serialize("cpuVramReqData",       cpuVramReqData,
 		             "secondCpuVramReqData", secondCpuVramReqData);

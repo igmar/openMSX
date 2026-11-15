@@ -509,13 +509,15 @@ public:
 
 	/** Calculates what 'blinkState' and 'blinkCount' would be at a specific line.
 	  * (The actual 'blinkState' and 'blinkCount' variables represent the values
-	  * for line 0 and remain fixed for the duration of the frame.
+	  * for frame line 'blinkRefLine': 0, or the line of an R#13 write in this
+	  * frame.)
+	  * @param line Frame line (lines since the start of this frame).
 	  */
 	struct BlinkStateCount {
 		bool state;
 		int count;
 	};
-	[[nodiscard]] BlinkStateCount calculateLineBlinkState(unsigned line) const {
+	[[nodiscard]] BlinkStateCount calculateLineBlinkState(int frameLine) const {
 		assert(isFastBlinkEnabled());
 
 		if (blinkCount == 0) { // not changing
@@ -526,7 +528,10 @@ public:
 		unsigned oddLen  = ((controlRegs[13] >> 0) & 0x0F) * 10;
 		unsigned totalLen = evenLen + oddLen;
 		assert(totalLen != 0); // because this implies 'blinkCount == 0'
-		line %= totalLen; // reduce double flips
+		// Lines before the reference line repeat the same pattern.
+		int rel = frameLine - blinkRefLine;
+		if (rel < 0) rel += (-rel / narrow<int>(totalLen) + 1) * narrow<int>(totalLen);
+		unsigned line = unsigned(rel) % totalLen; // reduce double flips
 
 		bool resultState = blinkState; // initial guess, adjusted later
 		if (blinkState) {
@@ -1363,6 +1368,11 @@ private:
 	  */
 	int blinkCount;
 
+	/** With fast blink: the frame line at which 'blinkState' and
+	  * 'blinkCount' hold. 0, or the line of an R#13 write in this frame.
+	  */
+	int blinkRefLine = 0;
+
 	/** VRAM read/write access pointer.
 	  * Contains the lower 14 bits of the current VRAM access address.
 	  */
@@ -1509,7 +1519,7 @@ private:
 	MSXCPU& cpu;
 	const uint8_t fixedVDPIOdelayCycles;
 };
-SERIALIZE_CLASS_VERSION(VDP, 14);
+SERIALIZE_CLASS_VERSION(VDP, 15);
 
 } // namespace openmsx
 

@@ -337,13 +337,15 @@ void PixelRenderer::updateBlinkBackgroundColor(
 }
 
 void PixelRenderer::updateBlinkState(
-	bool /*enabled*/, EmuTime /*time*/)
+	bool /*enabled*/, EmuTime time)
 {
 	// TODO: When the sync call is enabled, the screen flashes on
 	//       every call to this method.
 	//       I don't know why exactly, but it's probably related to
 	//       being called at frame start.
-	//sync(time);
+	// With fast blink the state changes per line, and an R#13 write
+	// restarts it mid-frame: the part before the write keeps the old one.
+	if (displayEnabled && vdp.isFastBlinkEnabled()) sync(time);
 }
 
 void PixelRenderer::updatePalette(
