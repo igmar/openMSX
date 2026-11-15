@@ -77,6 +77,7 @@ void Y8950Adpcm::reset(EmuTime time)
 	addrMask = (1 << 18) - 1;
 	reg7 = 0;
 	reg15 = 0;
+	lastTransfer = 0;
 	readDelay = 0;
 	romBank = false;
 	writeReg(0x12, 255, time); // volume
@@ -259,6 +260,7 @@ void Y8950Adpcm::writeReg(uint8_t rg, uint8_t data, EmuTime time)
 void Y8950Adpcm::writeData(uint8_t data)
 {
 	reg15 = data;
+	lastTransfer = data;
 	if ((reg7 & R07_MODE) == 0x60) {
 		// external memory write
 		assert(!isPlaying()); // no need to update the 'aud' data
@@ -381,6 +383,7 @@ uint8_t Y8950Adpcm::readData()
 			y8950.setStatus(Y8950::STATUS_EOS);
 		} else {
 			emu.memPtr += 2; // two nibbles at a time
+			lastTransfer = result;
 
 			// reset BRDY bit in status register, which means we
 			// are reading the memory now
@@ -405,7 +408,10 @@ uint8_t Y8950Adpcm::peekData() const
 		// external memory read
 		assert(!isPlaying()); // no need to update the 'aud' data
 		if (readDelay) {
-			return reg15;
+			// The dummy reads return the last byte that went
+			// through 0Fh, read or written (measured on a real
+			// NMS 1205).
+			return lastTransfer;
 		} else if (emu.memPtr > stopAddr) {
 			return 0;
 		} else {
@@ -522,6 +528,8 @@ int Y8950Adpcm::calcSample(bool doEmu)
 //  - Split PlayData in emu and audio part (though this doesn't add new state
 //    to the savestate).
 //  - Added clock object.
+// version 3:
+//  - Added lastTransfer, the byte the dummy reads return.
 template<typename Archive>
 void Y8950Adpcm::serialize(Archive& ar, unsigned version)
 {
@@ -550,6 +558,12 @@ void Y8950Adpcm::serialize(Archive& ar, unsigned version)
 		// ignore aud part for saving,
 		// for loading we make it the same as the emu part
 		aud = emu;
+	}
+
+	if (ar.versionAtLeast(version, 3)) {
+		ar.serialize("lastTransfer", lastTransfer);
+	} else {
+		lastTransfer = reg15;
 	}
 
 	if (ar.versionBelow(version, 2)) {

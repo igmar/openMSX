@@ -81,9 +81,10 @@ private:
 	int delta;
 	uint8_t reg7;
 	uint8_t reg15;
+	uint8_t lastTransfer; // last byte read or written through 0Fh
 	bool romBank;
 };
-SERIALIZE_CLASS_VERSION(Y8950Adpcm, 2);
+SERIALIZE_CLASS_VERSION(Y8950Adpcm, 3);
 
 } // namespace openmsx
 
