@@ -584,6 +584,9 @@ void Y8950::reset(EmuTime time)
 	irq.reset();
 
 	adpcm.reset(time);
+	// BUF RDY is set after a reset, although every flag is masked here
+	// (setStatus() leaves it out while masked).
+	status |= STATUS_BUF_RDY;
 }
 
 
@@ -1200,6 +1203,11 @@ void Y8950::callback(uint8_t flag)
 
 void Y8950::setStatus(uint8_t flags)
 {
+	// BUF RDY is only latched while its mask bit in register 04h is 0. On
+	// a real NMS 1205, BUF RDY set while masked (by a 07h write that starts
+	// a sample ram read, or by the reads through 0Fh) does not show up when
+	// the mask is cleared later.
+	flags &= ~STATUS_BUF_RDY | statusMask;
 	status |= flags;
 	if (status & statusMask) {
 		status |= 0x80;
