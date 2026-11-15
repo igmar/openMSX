@@ -1920,6 +1920,16 @@ void VDPCmdEngine::updateDisplayMode(DisplayMode mode, bool cmdBit, EmuTime time
 			if (cmdBit) {
 				return 4; // like GRAPHIC7, but non-planar
 				          // TODO timing might be different
+			} else if (vdp.hasYJK()) {
+				// Measured on a Philips VG-8235 (V9958): a
+				// command started in TEXT1, TEXT2, GRAPHIC1,
+				// GRAPHIC3 or MULTICOLOR with CMD = 0 sets CE,
+				// which lasts about as long as with CMD = 1
+				// (HMMV NX 64 / 128 / 256, NY 1: 1, 2, 5 lines;
+				// NX 256, NY 4: 23 lines). It also writes about
+				// one byte per row, at an address no rule fits
+				// yet: those writes are not modelled.
+				return 5;
 			} else {
 				return -1; // no commands
 			}
@@ -1930,7 +1940,7 @@ void VDPCmdEngine::updateDisplayMode(DisplayMode mode, bool cmdBit, EmuTime time
 		sync(time);
 		if (CMD) {
 			// VDP mode switch while command in progress
-			if (newScrMode == -1) {
+			if (newScrMode == -1 || newScrMode == 5) {
 				// TODO: For now abort cmd in progress,
 				//       later find out what really happens.
 				//       At least CE remains high for a while,
@@ -1962,7 +1972,7 @@ void VDPCmdEngine::executeCommand(EmuTime time)
 	executingProbe = true;
 	cmdProbe.signal(); // must be after executingProbe
 
-	switch ((scrMode << 4) | (CMD >> 4)) {
+	switch ((cmdTimingMode() << 4) | (CMD >> 4)) {
 	case 0x00: case 0x10: case 0x20: case 0x30: case 0x40:
 	case 0x01: case 0x11: case 0x21: case 0x31: case 0x41:
 	case 0x02: case 0x12: case 0x22: case 0x32: case 0x42:
@@ -2032,7 +2042,7 @@ void VDPCmdEngine::executeCommand(EmuTime time)
 
 void VDPCmdEngine::sync2(EmuTime time)
 {
-	switch ((scrMode << 8) | CMD) {
+	switch ((cmdTimingMode() << 8) | CMD) {
 	case 0x000: case 0x100: case 0x200: case 0x300: case 0x400:
 	case 0x001: case 0x101: case 0x201: case 0x301: case 0x401:
 	case 0x002: case 0x102: case 0x202: case 0x302: case 0x402:
@@ -2771,7 +2781,7 @@ TclObject VDPCmdEngine::CmdProbe::getValue() const
 	auto& engine = OUTER(VDPCmdEngine, cmdProbe);
 	if (!engine.executingProbe) return TclObject{};
 	auto regs = engine.getLastCommand();
-	auto formatted = VDPCmdEngine::formatCommand(regs, engine.scrMode);
+	auto formatted = VDPCmdEngine::formatCommand(regs, engine.cmdTimingMode());
 	return TclObject{formatted.str};
 }
 
@@ -2780,7 +2790,7 @@ TraceValue VDPCmdEngine::CmdProbe::getTraceValue() const
 	auto& engine = OUTER(VDPCmdEngine, cmdProbe);
 	if (!engine.executingProbe) return TraceValue{std::monostate{}};
 	auto regs = engine.getLastCommand();
-	auto formatted = VDPCmdEngine::formatCommand(regs, engine.scrMode);
+	auto formatted = VDPCmdEngine::formatCommand(regs, engine.cmdTimingMode());
 	return TraceValue{formatted.str};
 }
 

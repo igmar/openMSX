@@ -46,6 +46,11 @@ public:
 	  */
 	void reset(EmuTime time);
 
+	/** In a V9958 character mode without the CMD bit a command runs,
+	  * but its VRAM writes are dropped.
+	  */
+	[[nodiscard]] bool dropsWrites() const { return scrMode == 5; }
+
 	/** Synchronizes the command engine with the VDP.
 	  * Ideally this would be a private method, but the current
 	  * design doesn't allow that.
@@ -277,9 +282,17 @@ private:
 	/** Current screen mode.
 	  * 0 -> SCREEN5, 1 -> SCREEN6, 2 -> SCREEN7, 3 -> SCREEN8,
 	  * 4 -> Non-BitMap mode (like SCREEN8 but non-planar addressing)
+	  * 5 -> V9958 Non-BitMap mode without the CMD bit: runs as 4, but
+	  *      nothing is written
 	  * -1 -> other.
 	  */
 	int scrMode{-1};
+
+	/** The mode whose timing and addressing a command uses.
+	  */
+	[[nodiscard]] int cmdTimingMode() const {
+		return scrMode == 5 ? 4 : scrMode;
+	}
 
 	/** VDP command registers.
 	  */

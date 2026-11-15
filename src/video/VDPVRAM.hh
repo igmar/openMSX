@@ -428,6 +428,7 @@ public:
 	  *       the other sync which checks against the cmd write window.
 	  */
 	void cmdWrite(unsigned address, uint8_t value, EmuTime time) {
+		if (cmdEngine->dropsWrites()) [[unlikely]] return;
 		#ifdef DEBUG
 		// Rewriting history is not allowed.
 		assert(time >= vramTime);
