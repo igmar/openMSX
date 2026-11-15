@@ -324,12 +324,14 @@ uint8_t Y8950Adpcm::peekReg(uint8_t rg) const
 	case 0x0F: // ADPCM-DATA
 		return peekData();
 	case 0x13:
-		// TODO check: is this before or after
-		//   volume is applied
-		//   filtering is performed
-		return narrow_cast<uint8_t>((emu.output >>  8) & 0xFF);
+		// The decoder's 16-bit value, before the volume (register 12h)
+		// and the interpolation: 13h the low byte, 14h the high byte.
+		// Measured on a real NMS 1205: a playback that saturates the
+		// decoder reads FFh 7Fh with 12h = FFh, where the scaled
+		// output would read 7Fh 7Fh.
+		return narrow_cast<uint8_t>(emu.out & 0xFF);
 	case 0x14:
-		return narrow_cast<uint8_t>((emu.output >> 16) & 0xFF);
+		return narrow_cast<uint8_t>((emu.out >> 8) & 0xFF);
 	default:
 		return 255;
 	}
