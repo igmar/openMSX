@@ -1200,6 +1200,11 @@ void Y8950::callback(uint8_t flag)
 
 void Y8950::setStatus(uint8_t flags)
 {
+	// The timer and EOS flags are only latched while their mask bit in
+	// register 04h is 0. On a real NMS 1205 a timer overflow or an end of
+	// sample that happens while masked is lost: it does not show up when
+	// the mask is cleared later. BUF RDY and PCM BSY are not affected.
+	flags &= ~(STATUS_T1 | STATUS_T2 | STATUS_EOS) | statusMask;
 	status |= flags;
 	if (status & statusMask) {
 		status |= 0x80;

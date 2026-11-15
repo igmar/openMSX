@@ -146,8 +146,7 @@ void Y8950Adpcm::schedule()
 void Y8950Adpcm::executeUntil(EmuTime time)
 {
 	assert(isPlaying());
-	sync(time); // should set STATUS_EOS
-	assert(y8950.peekRawStatus() & Y8950::STATUS_EOS);
+	sync(time); // should set STATUS_EOS (unless it is masked)
 	if (isPlaying() && (reg7 & R07_REPEAT)) {
 		schedule();
 	}
