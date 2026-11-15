@@ -27,17 +27,22 @@ class MusicModulePeriphery final : public Y8950Periphery
 {
 public:
 	explicit MusicModulePeriphery(MSXAudio& audio);
+	void reset() override;
 	void write(uint4_t outputs, uint4_t values, EmuTime time) override;
 	[[nodiscard]] uint4_t read(EmuTime time) override;
 
 	template<typename Archive>
-	void serialize(Archive& /*ar*/, unsigned /*version*/) {
-		// nothing
+	void serialize(Archive& ar, unsigned version) {
+		if (ar.versionAtLeast(version, 2)) {
+			ar.serialize("keptLevels", keptLevels);
+		}
 	}
 
 private:
 	MSXAudio& audio;
+	uint4_t keptLevels = 0; // IO2-IO1: the levels they last drove
 };
+SERIALIZE_CLASS_VERSION(MusicModulePeriphery, 2);
 REGISTER_POLYMORPHIC_INITIALIZER(Y8950Periphery, MusicModulePeriphery, "MusicModule");
 
 class PanasonicAudioPeriphery final : public Y8950Periphery
@@ -147,15 +152,25 @@ void MusicModulePeriphery::write(uint4_t outputs, uint4_t values,
 	uint4_t actual = (outputs & values) | (~outputs & read(time));
 	audio.y8950.setEnabled((actual & 8) != 0, time);
 	audio.enableDAC((actual & 1) != 0, time);
+	// IO2-IO1 keep the level they drive while they are outputs
+	keptLevels = (keptLevels & ~(outputs & 6)) | (outputs & values & 6);
+}
+
+void MusicModulePeriphery::reset()
+{
+	keptLevels = 0;
 }
 
 uint4_t MusicModulePeriphery::read(EmuTime /*time*/)
 {
 	// IO2-IO1 are unconnected, reading them initially returns the last
-	// written value, but after some seconds it falls back to '0'
+	// written value, but after some seconds it falls back to '0'.
+	// Measured on a real NMS 1205: IO2, last driven 1, still reads 1 right
+	// after it is switched to an input. The fall back to '0' is not
+	// measured, so it is not modelled: they keep the last driven level.
 	// IO3 and IO0 are output pins, but reading them return respectively
 	// '1' and '0'
-	return 8;
+	return uint4_t(8 | keptLevels);
 }
 
 
