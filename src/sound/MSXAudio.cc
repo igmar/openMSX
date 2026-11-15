@@ -24,6 +24,13 @@ MSXAudio::MSXAudio(const DeviceConfig& config)
 		dac = std::make_unique<DACSound8U>(
 			getName() + " 8-bit DAC", "MSX-AUDIO 8-bit DAC",
 			config);
+		// The port 0Ah DAC against the Y8950. Measured on a real
+		// NMS 1205 (a recording of a full-swing square on this DAC
+		// together with an FM tone): the square's fundamental is
+		// 10.9 dB above the tone, where the default 8->16 bit scaling
+		// gives 0.8 dB. So raise it by 10.1 dB (x 3.2).
+		static constexpr float DAC_GAIN = 3.2f;
+		dac->setSoftwareVolume(256.0f * DAC_GAIN, getCurrentTime());
 	}
 	powerUp(getCurrentTime());
 }
