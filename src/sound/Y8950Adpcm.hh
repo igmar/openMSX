@@ -59,6 +59,7 @@ private:
 	void writeMemory(unsigned memPtr, uint8_t value);
 	[[nodiscard]] uint8_t readMemory(unsigned memPtr) const;
 	[[nodiscard]] int calcSample(bool doEmu);
+	[[nodiscard]] unsigned eosDelaySamples() const;
 
 private:
 	Y8950& y8950;
@@ -82,8 +83,10 @@ private:
 	uint8_t reg7;
 	uint8_t reg15;
 	bool romBank;
+	// Samples left until EOS is set (0: none pending), see calcSample()
+	unsigned eosDelay = 0;
 };
-SERIALIZE_CLASS_VERSION(Y8950Adpcm, 2);
+SERIALIZE_CLASS_VERSION(Y8950Adpcm, 3);
 
 } // namespace openmsx
 

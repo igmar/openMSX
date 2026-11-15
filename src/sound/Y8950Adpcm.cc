@@ -77,6 +77,7 @@ void Y8950Adpcm::reset(EmuTime time)
 	addrMask = (1 << 18) - 1;
 	reg7 = 0;
 	reg15 = 0;
+	eosDelay = 0;
 	readDelay = 0;
 	romBank = false;
 	writeReg(0x12, 255, time); // volume
@@ -129,11 +130,21 @@ void Y8950Adpcm::schedule()
 		if (reg7 & R07_MEMORY_DATA) {
 			// we already did a sync(time), so clock is up-to-date
 			Clock<Y8950::CLOCK_FREQ, Y8950::CLOCK_FREQ_DIV> stop(clock);
-			uint64_t samples = stopAddr - emu.memPtr + 1;
-			uint64_t length = (samples << STEP_BITS) +
-					((1 << STEP_BITS) - emu.nowStep) +
-					(delta - 1);
-			stop += unsigned(length / delta);
+			if (eosDelay) {
+				// EOS is pending: wake up when it is set
+				stop += eosDelay;
+			} else {
+				// wake up when the decoder starts the byte before
+				// the last (that arms EOS, see calcSample()), or
+				// else at the end of the sample
+				unsigned target = (emu.memPtr + 3 <= stopAddr)
+				                ? stopAddr - 3 : stopAddr;
+				uint64_t samples = target - emu.memPtr + 1;
+				uint64_t length = (samples << STEP_BITS) +
+						((1 << STEP_BITS) - emu.nowStep) +
+						(delta - 1);
+				stop += unsigned(length / delta);
+			}
 			setSyncPoint(stop.getTime());
 		} else {
 			// TODO we should also set a sync-point in this case
@@ -146,9 +157,8 @@ void Y8950Adpcm::schedule()
 void Y8950Adpcm::executeUntil(EmuTime time)
 {
 	assert(isPlaying());
-	sync(time); // should set STATUS_EOS
-	assert(y8950.peekRawStatus() & Y8950::STATUS_EOS);
-	if (isPlaying() && (reg7 & R07_REPEAT)) {
+	sync(time); // may arm or set EOS, or end the sample
+	if (isPlaying()) {
 		schedule();
 	}
 }
@@ -159,6 +169,7 @@ void Y8950Adpcm::writeReg(uint8_t rg, uint8_t data, EmuTime time)
 	switch (rg) {
 	case 0x07: // START/REC/MEM DATA/REPEAT/SP-OFF/-/-/RESET
 		reg7 = data;
+		eosDelay = 0; // not measured: what a 07h write does to a pending EOS
 		if (reg7 & R07_START) {
 			y8950.setStatus(Y8950::STATUS_PCM_BSY);
 		} else {
@@ -441,6 +452,13 @@ int Y8950Adpcm::calcSample()
 	return (reg7 & R07_SP_OFF) ? 0 : output;
 }
 
+// The delay from the start of the byte before the last to EOS:
+// 0.8 nibble + 1.8 samples, rounded to whole samples.
+unsigned Y8950Adpcm::eosDelaySamples() const
+{
+	return unsigned((8 * (1 << STEP_BITS) + 23 * delta) / (10 * delta));
+}
+
 int Y8950Adpcm::calcSample(bool doEmu)
 {
 	// values taken from ymdelta.c by Tatsuyuki Satoh.
@@ -456,6 +474,11 @@ int Y8950Adpcm::calcSample(bool doEmu)
 	assert(isPlaying());
 
 	PlayData& pd = doEmu ? emu : aud;
+	if (doEmu && eosDelay) {
+		if (--eosDelay == 0) {
+			y8950.setStatus(Y8950::STATUS_EOS);
+		}
+	}
 	pd.nowStep += delta;
 	if (pd.nowStep & ~STEP_MASK) {
 		pd.nowStep &= STEP_MASK;
@@ -489,17 +512,21 @@ int Y8950Adpcm::calcSample(bool doEmu)
 		pd.output = prevLeveling * volume + tmp;
 
 		++pd.memPtr;
+		if (doEmu && (reg7 & R07_MEMORY_DATA) &&
+		    (pd.memPtr == stopAddr - 2)) {
+			// The decoder has just started the byte before the
+			// last. EOS comes when the last byte is fetched, a
+			// short delay later, still before the sample's end
+			// (at every end, including loops). Measured on a real
+			// NMS 1205: for samples of 8 and 16 nibbles at
+			// DELTA-N FFFFh, C000h, 8000h and 4000h, EOS comes
+			// (N - 3.2) * (65536 / DELTA-N) + 2.8 samples after
+			// START, within a sample: at DELTA-N 4000h about 9
+			// samples before the last nibble.
+			eosDelay = eosDelaySamples();
+		}
 		if ((reg7 & R07_MEMORY_DATA) &&
 		    (pd.memPtr > stopAddr)) {
-			// On 2003/06/21 I commited a patch with comment:
-			//   generate end-of-sample interrupt at every sample
-			//   end, including loops
-			// Unfortunately it doesn't give any reason why and now
-			// I can't remember it :-(
-			// This is different from e.g. the MAME implementation.
-			if (doEmu) {
-				y8950.setStatus(Y8950::STATUS_EOS);
-			}
 			if (reg7 & R07_REPEAT) {
 				restart(pd);
 			} else {
@@ -522,6 +549,8 @@ int Y8950Adpcm::calcSample(bool doEmu)
 //  - Split PlayData in emu and audio part (though this doesn't add new state
 //    to the savestate).
 //  - Added clock object.
+// version 3:
+//  - Added eosDelay, the samples left until EOS is set.
 template<typename Archive>
 void Y8950Adpcm::serialize(Archive& ar, unsigned version)
 {
@@ -550,6 +579,12 @@ void Y8950Adpcm::serialize(Archive& ar, unsigned version)
 		// ignore aud part for saving,
 		// for loading we make it the same as the emu part
 		aud = emu;
+	}
+
+	if (ar.versionAtLeast(version, 3)) {
+		ar.serialize("eosDelay", eosDelay);
+	} else {
+		eosDelay = 0;
 	}
 
 	if (ar.versionBelow(version, 2)) {
