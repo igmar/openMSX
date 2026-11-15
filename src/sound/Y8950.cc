@@ -1155,7 +1155,28 @@ uint8_t Y8950::readReg(uint8_t rg, EmuTime time)
 		case 0x1A: // PCM-DATA
 			return adpcm.readReg(rg, time);
 		default:
+			return peekDataPort(rg, time);
+	}
+}
+
+// What the CPU reads at the data port, without side effects. Only a few
+// registers are readable. For the others the Y8950 does not drive the data
+// bus: on a real NMS 1205 such a read returns the last byte on the bus (the
+// IN instruction's operand), not the register's value. The floating value
+// depends on the machine, so return the usual undriven value. The debugger
+// still sees the register values through peekReg().
+uint8_t Y8950::peekDataPort(uint8_t rg, EmuTime time) const
+{
+	switch (rg) {
+		case 0x05: // (KEYBOARD IN)
+		case 0x0F: // ADPCM-DATA
+		case 0x13: //  ???
+		case 0x14: //  ???
+		case 0x19: // I/O DATA
+		case 0x1A: // PCM-DATA
 			return peekReg(rg, time);
+		default:
+			return 0xFF;
 	}
 }
 

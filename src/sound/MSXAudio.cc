@@ -72,7 +72,7 @@ byte MSXAudio::peekIO(uint16_t port, EmuTime time) const
 		// read DAC
 		return 0xFF; // read always returns 0xFF
 	} else {
-		return (port & 1) ? y8950.peekReg(registerLatch, time)
+		return (port & 1) ? y8950.peekDataPort(registerLatch, time)
 		                  : y8950.peekStatus(time);
 	}
 }

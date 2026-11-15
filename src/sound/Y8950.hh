@@ -65,6 +65,7 @@ public:
 	void writeReg(uint8_t rg, uint8_t data, EmuTime time);
 	[[nodiscard]] uint8_t readReg(uint8_t rg, EmuTime time);
 	[[nodiscard]] uint8_t peekReg(uint8_t rg, EmuTime time) const;
+	[[nodiscard]] uint8_t peekDataPort(uint8_t rg, EmuTime time) const;
 	[[nodiscard]] uint8_t readStatus(EmuTime time) const;
 	[[nodiscard]] uint8_t peekStatus(EmuTime time) const;
 
